@@ -1,6 +1,6 @@
 # 參考網址
 https://github.com/sparfenyuk/mcp-proxy
-
+https://github.com/sidharthrajaram/mcp-sse/blob/main/README.md
 # claude安裝後設定
 ```
 {
