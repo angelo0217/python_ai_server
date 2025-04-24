@@ -16,13 +16,18 @@
 
     這個命令會指示 `uv` 使用 Python 解釋器來執行 `get-pip.py` 腳本，從而下載並安裝 `pip` 及其相關依賴（如 `setuptools` 和 `wheel`）。
 
-3**安裝 mcp[cli]：**
+3.  **安裝 mcp[cli]：**
     ```bash
     pip install mcp[cli]
     ```
 
-4**使用 uv 執行 mcp 安裝 sotre_count_mcp.py：**
+4.  **使用 uv 執行 mcp 安裝 sotre_count_mcp.py：**
     ```bash
     uv run mcp install sotre_count_mcp.py
     ```
     這會自動安裝到有 mcp 設定的地方。
+
+5.  ** mcp inspector 可測試 **
+    ```
+    npx @modelcontextprotocol/inspector
+    ```
