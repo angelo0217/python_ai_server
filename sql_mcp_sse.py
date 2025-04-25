@@ -5,6 +5,7 @@ from starlette.applications import Starlette
 from mcp.server.sse import SseServerTransport
 from starlette.requests import Request
 from starlette.routing import Mount, Route
+from starlette.responses import JSONResponse
 from mcp.server import Server
 import uvicorn
 import sqlite3
@@ -212,8 +213,35 @@ async def delete_data(table_name: str, condition: str) -> str:
     return format_result(result)
 
 
+@mcp.resource("tables://{table_name}/schema")
+async def table_schema(table_name: str) -> JSONResponse:
+    """取得指定資料表的 schema 並以 JSON 格式返回。
+
+    Path Parameter:
+        table_name: 要查詢 schema 的資料表名稱。
+    """
+    query = f"PRAGMA table_info({table_name})"
+    result = await execute_query(query)
+    return json.dumps(result)
+
+
+@mcp.resource("greeting://{name}")
+def get_greeting(name: str) -> str:
+    """Get a personalized greeting"""
+    return f"Hello, {name}!"
+
+
+@mcp.prompt()
+def table_structure_prompt(operation: str) -> str:
+    """Prompt for a calculation and return the result."""
+    if operation == "get_table_structure":
+        return f"you can get table structure <UNK>"
+    else:
+        return "Invalid operation. Please choose exist operation"
+
+
 def create_starlette_app(mcp_server: Server, *, debug: bool = False) -> Starlette:
-    """建立一個 Starlette 應用程式，用於提供 MCP 伺服器的 SSE 介面。"""
+    """建立一個 Starlette 應用程式，用於提供 MCP 伺服器的 SSE 介面和資料表 schema 資源。"""
     sse = SseServerTransport("/messages/")
 
     async def handle_sse(request: Request) -> None:
@@ -238,12 +266,14 @@ def create_starlette_app(mcp_server: Server, *, debug: bool = False) -> Starlett
         )
     ]
 
+    routes = [
+        Route("/sse", endpoint=handle_sse),
+        Mount("/messages/", app=sse.handle_post_message),
+    ]
+
     return Starlette(
         debug=debug,
-        routes=[
-            Route("/sse", endpoint=handle_sse),
-            Mount("/messages/", app=sse.handle_post_message),
-        ],
+        routes=routes,
         middleware=middleware,
     )
 
@@ -266,9 +296,12 @@ if __name__ == "__main__":
     init_database()
 
     print(f"SQL MCP 伺服器啟動中，資料庫路徑：{DB_PATH}")
-    print(f"訪問地址：http://{args.host}:{args.port}/sse")
+    print(f"SSE 訪問地址：http://{args.host}:{args.port}/sse")
+    print(f"資料表 Schema 資源位於：http://{args.host}:{args.port}/tables/<table_name>/schema")
+    print(f"所有資料表列表資源位於：http://{args.host}:{args.port}/tables")
 
-    # 綁定 SSE 請求處理到 MCP 伺服器
+    # 綁定 MCP 資源到 Starlette 應用程式
     starlette_app = create_starlette_app(mcp_server, debug=True)
+    # mcp.mount_to_app(starlette_app)
 
     uvicorn.run(starlette_app, host=args.host, port=args.port)
