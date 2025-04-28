@@ -527,9 +527,9 @@ Please provide a detailed final evaluation for each file and an overall assessme
     
     return results
 
-def save_results(results: Dict[str, Any], output_dir: str = "generated_code") -> None:
+def save_results(results: Dict[str, Any], output_dir: str = "results") -> None:
     """
-    Save workflow results to appropriate files
+    Save workflow results to appropriate files with numbered iteration folders
     
     Args:
         results: Dictionary containing workflow results
@@ -545,17 +545,48 @@ def save_results(results: Dict[str, Any], output_dir: str = "generated_code") ->
     # Create subdirectory for this specific project
     os.makedirs(project_path, exist_ok=True)
     
-    # Save optimized files
-    optimized_files = results["optimized_files"]
-    saved_files = []
+    # Create numbered directories for iterations
+    # 1. First iteration - Initial code generation
+    initial_dir = os.path.join(project_path, "1_initial_code")
+    os.makedirs(initial_dir, exist_ok=True)
     
-    for filename, content in optimized_files.items():
+    # Save initial files
+    for filename, content in results["initial_files"].items():
+        file_path = os.path.join(initial_dir, filename)
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(content)
+    
+    # Save initial code review
+    review_path = os.path.join(initial_dir, "code_review.md")
+    with open(review_path, "w", encoding="utf-8") as f:
+        f.write("# Initial Code Review\n\n")
+        f.write(results["initial_evaluation"])
+    
+    # 2. Second iteration - Optimized code after review
+    optimized_dir = os.path.join(project_path, "2_optimized_code")
+    os.makedirs(optimized_dir, exist_ok=True)
+    
+    # Save optimized files
+    for filename, content in results["optimized_files"].items():
+        file_path = os.path.join(optimized_dir, filename)
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(content)
+    
+    # Save final code review
+    review_path = os.path.join(optimized_dir, "code_review.md")
+    with open(review_path, "w", encoding="utf-8") as f:
+        f.write("# Final Code Review\n\n")
+        f.write(results["final_evaluation"])
+    
+    # Also save optimized files in the root directory for easy access
+    saved_files = []
+    for filename, content in results["optimized_files"].items():
         file_path = os.path.join(project_path, filename)
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(content)
-        saved_files.append(file_path)
+        saved_files.append(filename)
     
-    # Save documentation as Markdown file
+    # Save comprehensive documentation as Markdown file
     doc_path = os.path.join(project_path, "documentation.md")
     with open(doc_path, "w", encoding="utf-8") as f:
         f.write(f"# Generated Project: {project_dir}\n\n")
@@ -567,28 +598,42 @@ def save_results(results: Dict[str, Any], output_dir: str = "generated_code") ->
         f.write(f"## Usage\n\n")
         f.write(f"The code is available in the following files:\n\n")
         
-        for filename in optimized_files.keys():
+        for filename in results["optimized_files"].keys():
             f.write(f"- `{filename}`\n")
         f.write("\n")
         
+        # Add iteration information
+        f.write(f"## Code Iterations\n\n")
+        f.write(f"This project contains the following iteration folders:\n\n")
+        f.write(f"- `1_initial_code/`: Initial code generation\n")
+        f.write(f"- `2_optimized_code/`: Code after review and optimization\n\n")
+        
         # Add code evaluation
-        f.write(f"## Code Evaluation\n\n{results['final_evaluation']}\n\n")
+        f.write(f"## Final Code Evaluation\n\n{results['final_evaluation']}\n\n")
+        
+        # Add review process section
+        f.write(f"## Code Review Process\n\n")
+        f.write(f"### Initial Review\n\n{results['initial_evaluation']}\n\n")
         
         # Add files section with original and optimized versions
-        f.write(f"## Original Code (for reference)\n\n")
+        f.write(f"## Original Code (iteration 1)\n\n")
         for filename, content in results["initial_files"].items():
             f.write(f"### {filename}\n\n```python\n{content}\n```\n\n")
         
-        f.write(f"## Optimized Code (implemented)\n\n")
-        for filename, content in optimized_files.items():
+        f.write(f"## Optimized Code (iteration 2)\n\n")
+        for filename, content in results["optimized_files"].items():
             f.write(f"### {filename}\n\n```python\n{content}\n```\n\n")
     
     logger.info(f"Results saved to directory: {project_path}")
     print(f"\nFiles generated successfully in directory: {project_path}")
-    print("Generated files:")
-    for file_path in saved_files:
-        print(f"- {os.path.basename(file_path)}")
-    print(f"- documentation.md")
+    print("Generated files and iterations:")
+    print(f"- 1_initial_code/")
+    print(f"- 2_optimized_code/")
+    print("- Final code files:")
+    for filename in saved_files:
+        print(f"  - {filename}")
+    print(f"- documentation.md (comprehensive documentation)")
+
 
 if __name__ == "__main__":
     # Example task - modified to request multiple files

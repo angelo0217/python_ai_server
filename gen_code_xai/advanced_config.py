@@ -412,13 +412,43 @@ and whether it conforms to the best practices. Please provide a detailed final e
     project_path = os.path.join(output_dir, project_dir)
     os.makedirs(project_path, exist_ok=True)
     
-    # Save all files to appropriate subdirectory
-    saved_files = []
-    for filename, content in current_files.items():
+    # Create numbered directories for each iteration
+    saved_files_by_iteration = {}
+    
+    for i, iter_result in enumerate(results["iteration_history"]):
+        # Create iteration directory with numeric prefix
+        iter_dirname = f"{i+1}_iteration_code"
+        iter_path = os.path.join(project_path, iter_dirname)
+        os.makedirs(iter_path, exist_ok=True)
+        
+        # Save files for this iteration
+        saved_files = []
+        for filename, content in iter_result["files"].items():
+            file_path = os.path.join(iter_path, filename)
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            saved_files.append(filename)
+        
+        saved_files_by_iteration[iter_dirname] = saved_files
+        
+        # Save evaluation file for this iteration
+        if iter_result["evaluation"]:
+            review_path = os.path.join(iter_path, "code_review.md")
+            with open(review_path, "w", encoding="utf-8") as f:
+                if i == len(results["iteration_history"]) - 1:
+                    f.write(f"# Final Code Review (Iteration {i+1})\n\n")
+                else:
+                    f.write(f"# Code Review (Iteration {i+1})\n\n")
+                f.write(iter_result["evaluation"])
+    
+    # Also save final files to the root directory for easy access
+    final_files = []
+    final_iteration = results["iteration_history"][-1]
+    for filename, content in final_iteration["files"].items():
         file_path = os.path.join(project_path, filename)
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(content)
-        saved_files.append(os.path.basename(file_path))
+        final_files.append(filename)
     
     # Save documentation to a Markdown file
     doc_file_name = "documentation.md"
@@ -437,12 +467,24 @@ and whether it conforms to the best practices. Please provide a detailed final e
         f.write(f"## Usage\n\n")
         f.write(f"The code is available in the following files:\n\n")
         
-        for filename in saved_files:
+        for filename in final_files:
             f.write(f"- `{filename}`\n")
         f.write("\n")
         
+        # Add information about iteration folders
+        f.write(f"## Code Iterations\n\n")
+        f.write(f"This project contains the following iteration folders:\n\n")
+        
+        for i in range(len(results["iteration_history"])):
+            iter_dirname = f"{i+1}_iteration_code"
+            if i == len(results["iteration_history"]) - 1:
+                f.write(f"- `{iter_dirname}/`: Final code iteration\n")
+            else:
+                f.write(f"- `{iter_dirname}/`: Iteration {i+1}\n")
+        f.write("\n")
+        
         # Add code evaluation
-        f.write(f"## Code Evaluation\n\n{final_evaluation}\n\n")
+        f.write(f"## Final Code Evaluation\n\n{final_evaluation}\n\n")
         
         # Add development history
         f.write(f"## Development History\n\n")
@@ -474,7 +516,7 @@ and whether it conforms to the best practices. Please provide a detailed final e
             f.write(f"### {filename}\n\n```{lang}\n{content}\n```\n\n")
         
         f.write(f"## Final Files (implemented)\n\n")
-        for filename, content in current_files.items():
+        for filename, content in final_iteration["files"].items():
             file_ext = os.path.splitext(filename)[1].lower()
             lang = language
             
@@ -496,8 +538,13 @@ and whether it conforms to the best practices. Please provide a detailed final e
     
     logger.info(f"Results saved to directory: {project_path}")
     print(f"\nFiles generated successfully in directory: {project_path}")
-    print("Generated files:")
-    for filename in saved_files:
+    print("Generated iteration folders:")
+    for i in range(len(results["iteration_history"])):
+        iter_dirname = f"{i+1}_iteration_code"
+        print(f"- {iter_dirname}/")
+    
+    print("Final files in root directory:")
+    for filename in final_files:
         print(f"- {filename}")
     print(f"- {doc_file_name}")
     
