@@ -12,17 +12,16 @@ import re
 import autogen
 from dotenv import load_dotenv
 import logging
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 import datetime
 import argparse
 
-# Import base modules
+# Import base modules from enhanced version
 from enhanced_code_generation_evaluation import (
     XAIAgent,
-    CodeGeneratorAgent, 
-    CodeEvaluatorAgent, 
-    extract_code_from_markdown,
-    get_module_name_from_task,
+    extract_files_from_response,
+    generate_project_dir_name,
+    sanitize_filename,
     logger
 )
 
@@ -96,6 +95,20 @@ class EnhancedCodeGeneratorAgent(XAIAgent):
 5. 考虑边缘情况和异常处理
 6. 确保代码具有良好的可读性和可维护性
 
+如果任务需要多个文件，请为每个文件提供完整的代码实现。对于每个文件，请用以下格式明确标记：
+
+FILE: filename.py
+```python
+# 文件内容
+```
+
+或者对于HTML文件：
+
+FILE: filename.html
+```html
+<!-- HTML内容 -->
+```
+
 请务必提供完整可运行的代码实现，不要省略任何重要部分。
 在回复中，请先简要说明你的实现思路，然后提供完整的代码。"""
         
@@ -110,6 +123,46 @@ class EnhancedCodeGeneratorAgent(XAIAgent):
         self.language = language
         self.complexity = complexity
 
+# Enhanced code evaluator agent
+class EnhancedCodeEvaluatorAgent(XAIAgent):
+    """Enhanced code evaluator agent focused on evaluating code quality and providing optimization suggestions"""
+    
+    def __init__(self, name: str = "Enhanced Code Evaluator"):
+        """Initialize enhanced code evaluator agent"""
+        system_message = """你是一位经验丰富的代码审查者，负责评估和优化其他开发者的代码。
+请遵循以下评估原则:
+1. 详细分析代码的性能、可读性和可维护性
+2. 找出代码中的潜在问题和改进空间
+3. 给出具体的优化建议和可行的解决方案
+4. 提供建设性的反馈，指出代码的优点和不足
+5. 考虑边缘情况和异常处理是否完整
+6. 检查是否遵循编程语言的最佳实践和设计模式
+
+如果代码包含多个文件，请对每个文件进行评估，或者提供整体评估。
+
+请按照以下格式提供评估:
+
+## 代码评估
+### 优点
+- [列出代码的优点]
+
+### 需要改进
+- [列出需要改进的地方]
+
+## 优化建议
+1. [具体的优化建议1]
+2. [具体的优化建议2]
+...
+
+## 总体评分
+[1-10分，并简要说明理由]"""
+        
+        super().__init__(
+            name=name,
+            system_message=system_message,
+            temperature=0.1  # Use lower temperature for more consistent evaluation
+        )
+
 # Enhanced code evaluation workflow
 def run_enhanced_workflow(
     task_description: str,
@@ -117,7 +170,7 @@ def run_enhanced_workflow(
     complexity: str = "medium",
     iterations: int = 2,
     output_dir: str = "results"
-) -> Dict[str, str]:
+) -> Dict[str, Any]:
     """
     Run enhanced code generation and evaluation workflow
     
@@ -137,7 +190,7 @@ def run_enhanced_workflow(
         language=language,
         complexity=complexity
     )
-    code_evaluator = CodeEvaluatorAgent(name="Code Evaluator")
+    code_evaluator = EnhancedCodeEvaluatorAgent(name="Code Evaluator")
     
     # Ensure output directory exists
     os.makedirs(output_dir, exist_ok=True)
@@ -160,17 +213,20 @@ def run_enhanced_workflow(
 
 {task_description}
 
+If the task requires multiple files, please create separate files and clearly indicate the filename for each file using the format 'FILE: filename.py' or 'FILE: filename.html' before each code block.
+
 Please provide a complete implementation and ensure the code can run directly."""
     
     current_code_response = code_generator.generate_response(code_prompt)
     
-    # Extract actual code from markdown formatted response
-    current_code = extract_code_from_markdown(current_code_response)
+    # Extract files from the response
+    current_files = extract_files_from_response(current_code_response)
     
     # Record first round result
     iteration_result = {
         "round": 1,
-        "code": current_code,
+        "code_response": current_code_response,
+        "files": current_files,
         "evaluation": "",
     }
     
@@ -181,18 +237,37 @@ Please provide a complete implementation and ensure the code can run directly.""
         logger.info(f"Starting Round {i+1} code evaluation")
         logger.info("="*80)
         
+        # Prepare the evaluation prompt based on files
         evaluation_prompt = f"""Please evaluate the following {language.upper()} code based on the requirements:
 
 Task Description:
 {task_description}
 
 Code Implementation:
-```{language}
-{current_code}
-```
-
-Please evaluate the code quality in detail, identify strengths and weaknesses, and provide specific optimization suggestions.
-Pay special attention to best practices and common issues in {language}."""
+"""
+        
+        # Add code blocks for each file
+        for filename, content in current_files.items():
+            file_ext = os.path.splitext(filename)[1].lower()
+            lang = language
+            
+            # Determine language for markdown code block
+            if file_ext == '.html':
+                lang = 'html'
+            elif file_ext == '.js':
+                lang = 'javascript'
+            elif file_ext == '.css':
+                lang = 'css'
+            elif file_ext == '.java':
+                lang = 'java'
+            elif file_ext == '.cpp' or file_ext == '.h':
+                lang = 'cpp'
+            elif file_ext == '.go':
+                lang = 'go'
+                
+            evaluation_prompt += f"\nFILE: {filename}\n```{lang}\n{content}\n```\n"
+        
+        evaluation_prompt += "\nPlease evaluate the code quality in detail, identify strengths and weaknesses, and provide specific optimization suggestions for each file."
         
         evaluation = code_evaluator.generate_response(evaluation_prompt)
         iteration_result["evaluation"] = evaluation
@@ -209,32 +284,55 @@ Pay special attention to best practices and common issues in {language}."""
         logger.info(f"Starting Round {i+2} code optimization")
         logger.info("="*80)
         
-        optimization_prompt = f"""Please optimize your previous {language.upper()} code based on the evaluation feedback:
+        optimization_prompt = f"""Please optimize your previous code based on the evaluation feedback:
 
 Original Task:
 {task_description}
 
 Your original code implementation:
-```{language}
-{current_code}
-```
+"""
 
+        # Add code blocks for each file
+        for filename, content in current_files.items():
+            file_ext = os.path.splitext(filename)[1].lower()
+            lang = language
+            
+            # Determine language for markdown code block
+            if file_ext == '.html':
+                lang = 'html'
+            elif file_ext == '.js':
+                lang = 'javascript'
+            elif file_ext == '.css':
+                lang = 'css'
+            elif file_ext == '.java':
+                lang = 'java'
+            elif file_ext == '.cpp' or file_ext == '.h':
+                lang = 'cpp'
+            elif file_ext == '.go':
+                lang = 'go'
+                
+            optimization_prompt += f"\nFILE: {filename}\n```{lang}\n{content}\n```\n"
+        
+        optimization_prompt += f"""
 Evaluation Feedback:
 {evaluation}
 
-Please provide a complete optimized code implementation based on the evaluation feedback.
+Please provide an optimized complete code implementation based on the evaluation feedback.
 Pay special attention to addressing the issues identified in the evaluation and adopting the specific improvement suggestions.
-Please provide the complete code without omitting any parts."""
+
+If the implementation requires multiple files, please clearly indicate each filename using the format 'FILE: filename.ext' before each code block.
+Please provide the complete code for each file without omitting any parts."""
         
         optimized_code_response = code_generator.generate_response(optimization_prompt)
         
-        # Extract actual code from markdown formatted response
-        current_code = extract_code_from_markdown(optimized_code_response)
+        # Extract optimized files
+        current_files = extract_files_from_response(optimized_code_response)
         
         # Prepare next iteration record
         iteration_result = {
             "round": i+2,
-            "code": current_code,
+            "code_response": optimized_code_response,
+            "files": current_files,
             "evaluation": "",
         }
     
@@ -249,17 +347,55 @@ Task Description:
 {task_description}
 
 Initial Code (Round 1):
-```{language}
-{results["iteration_history"][0]["code"]}
-```
+"""
 
-Final Code (Round {iterations}):
-```{language}
-{current_code}
-```
-
+    # Add initial code blocks
+    for filename, content in results["iteration_history"][0]["files"].items():
+        file_ext = os.path.splitext(filename)[1].lower()
+        lang = language
+        
+        # Determine language for markdown code block
+        if file_ext == '.html':
+            lang = 'html'
+        elif file_ext == '.js':
+            lang = 'javascript'
+        elif file_ext == '.css':
+            lang = 'css'
+        elif file_ext == '.java':
+            lang = 'java'
+        elif file_ext == '.cpp' or file_ext == '.h':
+            lang = 'cpp'
+        elif file_ext == '.go':
+            lang = 'go'
+            
+        final_evaluation_prompt += f"\nFILE: {filename}\n```{lang}\n{content}\n```\n"
+    
+    final_evaluation_prompt += "\nFinal Code (Round {iterations}):\n"
+    
+    # Add final code blocks
+    for filename, content in current_files.items():
+        file_ext = os.path.splitext(filename)[1].lower()
+        lang = language
+        
+        # Determine language for markdown code block
+        if file_ext == '.html':
+            lang = 'html'
+        elif file_ext == '.js':
+            lang = 'javascript'
+        elif file_ext == '.css':
+            lang = 'css'
+        elif file_ext == '.java':
+            lang = 'java'
+        elif file_ext == '.cpp' or file_ext == '.h':
+            lang = 'cpp'
+        elif file_ext == '.go':
+            lang = 'go'
+            
+        final_evaluation_prompt += f"\nFILE: {filename}\n```{lang}\n{content}\n```\n"
+    
+    final_evaluation_prompt += """
 Please comprehensively evaluate the improvement in code quality, analyze whether the optimization process has addressed key issues,
-and whether it conforms to the best practices of the {language} language. Please provide a detailed final evaluation and score."""
+and whether it conforms to the best practices. Please provide a detailed final evaluation for each file and an overall assessment."""
     
     final_evaluation = code_evaluator.generate_response(final_evaluation_prompt)
     results["final_evaluation"] = final_evaluation
@@ -268,32 +404,28 @@ and whether it conforms to the best practices of the {language} language. Please
     logger.info("Enhanced code generation and evaluation workflow completed")
     logger.info("="*80)
     
-    # Generate appropriate module name
-    module_name = get_module_name_from_task(task_description)
-    results["module_name"] = module_name
+    # Generate project directory name
+    project_dir = generate_project_dir_name()
+    results["project_dir"] = project_dir
     
-    # Get file extension based on language
-    file_extensions = {
-        "python": ".py",
-        "javascript": ".js",
-        "java": ".java",
-        "cpp": ".cpp",
-        "go": ".go"
-    }
-    file_extension = file_extensions.get(language.lower(), ".txt")
+    # Create a subdirectory for this specific project
+    project_path = os.path.join(output_dir, project_dir)
+    os.makedirs(project_path, exist_ok=True)
     
-    # Save to appropriate files
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    file_name = f"{module_name}{file_extension}"
-    doc_file_name = f"{module_name}_documentation.md"
-    
-    # Save code to a source file with appropriate extension
-    with open(os.path.join(output_dir, file_name), "w", encoding="utf-8") as f:
-        f.write(current_code)
+    # Save all files to appropriate subdirectory
+    saved_files = []
+    for filename, content in current_files.items():
+        file_path = os.path.join(project_path, filename)
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        saved_files.append(os.path.basename(file_path))
     
     # Save documentation to a Markdown file
-    with open(os.path.join(output_dir, doc_file_name), "w", encoding="utf-8") as f:
-        f.write(f"# {module_name.replace('_', ' ').title()} ({language.title()})\n\n")
+    doc_file_name = "documentation.md"
+    doc_path = os.path.join(project_path, doc_file_name)
+    
+    with open(doc_path, "w", encoding="utf-8") as f:
+        f.write(f"# Generated Project ({language.title()})\n\n")
         f.write(f"- **Language**: {language}\n")
         f.write(f"- **Complexity**: {complexity}\n")
         f.write(f"- **Iterations**: {iterations}\n\n")
@@ -303,20 +435,16 @@ and whether it conforms to the best practices of the {language} language. Please
         
         # Add usage instructions
         f.write(f"## Usage\n\n")
-        f.write(f"The code is available in the file `{file_name}`.\n\n")
+        f.write(f"The code is available in the following files:\n\n")
         
-        # Add language-specific usage instructions
-        if language.lower() == "python":
-            f.write(f"### How to Use\n\n")
-            f.write(f"1. Import the module:\n```python\nimport {module_name}\n```\n\n")
-        elif language.lower() == "javascript":
-            f.write(f"### How to Use\n\n")
-            f.write(f"1. Include the script in your HTML:\n```html\n<script src=\"{file_name}\"></script>\n```\n\n")
+        for filename in saved_files:
+            f.write(f"- `{filename}`\n")
+        f.write("\n")
         
         # Add code evaluation
         f.write(f"## Code Evaluation\n\n{final_evaluation}\n\n")
         
-        # Add iteration history for reference
+        # Add development history
         f.write(f"## Development History\n\n")
         for i, iter_result in enumerate(results["iteration_history"]):
             f.write(f"### Round {iter_result['round']}\n\n")
@@ -324,13 +452,54 @@ and whether it conforms to the best practices of the {language} language. Please
                 f.write(f"#### Evaluation\n\n{iter_result['evaluation']}\n\n")
         
         # Add both code versions for reference
-        f.write(f"## Original Code (for reference)\n\n```{language}\n{results['iteration_history'][0]['code']}\n```\n\n")
-        f.write(f"## Final Code (implemented)\n\n```{language}\n{current_code}\n```\n\n")
+        f.write(f"## Initial Files (for reference)\n\n")
+        for filename, content in results["iteration_history"][0]["files"].items():
+            file_ext = os.path.splitext(filename)[1].lower()
+            lang = language
+            
+            # Determine language for markdown code block
+            if file_ext == '.html':
+                lang = 'html'
+            elif file_ext == '.js':
+                lang = 'javascript'
+            elif file_ext == '.css':
+                lang = 'css'
+            elif file_ext == '.java':
+                lang = 'java'
+            elif file_ext == '.cpp' or file_ext == '.h':
+                lang = 'cpp'
+            elif file_ext == '.go':
+                lang = 'go'
+                
+            f.write(f"### {filename}\n\n```{lang}\n{content}\n```\n\n")
+        
+        f.write(f"## Final Files (implemented)\n\n")
+        for filename, content in current_files.items():
+            file_ext = os.path.splitext(filename)[1].lower()
+            lang = language
+            
+            # Determine language for markdown code block
+            if file_ext == '.html':
+                lang = 'html'
+            elif file_ext == '.js':
+                lang = 'javascript'
+            elif file_ext == '.css':
+                lang = 'css'
+            elif file_ext == '.java':
+                lang = 'java'
+            elif file_ext == '.cpp' or file_ext == '.h':
+                lang = 'cpp'
+            elif file_ext == '.go':
+                lang = 'go'
+                
+            f.write(f"### {filename}\n\n```{lang}\n{content}\n```\n\n")
     
-    logger.info(f"Results saved to {output_dir}/{file_name} and {output_dir}/{doc_file_name}")
-    print(f"\nFiles generated successfully:")
-    print(f"- Code file: {os.path.join(output_dir, file_name)}")
-    print(f"- Documentation: {os.path.join(output_dir, doc_file_name)}")
+    logger.info(f"Results saved to directory: {project_path}")
+    print(f"\nFiles generated successfully in directory: {project_path}")
+    print("Generated files:")
+    for filename in saved_files:
+        print(f"- {filename}")
+    print(f"- {doc_file_name}")
     
     return results
 
@@ -373,13 +542,13 @@ def main():
     else:
         # Default example task
         task_description = """
-        Implement a file encryption/decryption tool with the following features:
-        1. Support for AES and RSA encryption algorithms
-        2. Ability to encrypt/decrypt text files and binary files
-        3. Provide both command-line interface and simple graphical user interface
-        4. Implement key management features (generation, storage, import/export)
-        5. Support batch processing of multiple files
-        6. Include detailed usage documentation and examples
+        Implement a simple web application with the following features:
+        1. A Flask web server with routes for displaying data and handling form submissions
+        2. A SQLite database for storing user data
+        3. HTML templates for the user interface (use a separate file)
+        4. A configuration file for app settings
+        5. A utility module with helper functions
+        6. Basic user authentication
         """
     
     # Run workflow

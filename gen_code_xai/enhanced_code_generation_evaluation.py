@@ -17,7 +17,7 @@ import autogen
 from autogen import AssistantAgent, UserProxyAgent
 from dotenv import load_dotenv
 import logging
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 import datetime
 
 # Configure logging
@@ -122,6 +122,13 @@ class CodeGeneratorAgent(XAIAgent):
 5. 考虑边缘情况和异常处理
 6. 确保代码具有良好的可读性和可维护性
 
+如果任务需要多个文件，请为每个文件提供完整的代码实现。对于每个文件，请用以下格式明确标记：
+
+FILE: filename.py
+```python
+# 文件内容
+```
+
 请务必提供完整可运行的代码实现，不要省略任何重要部分。
 在回复中，请先简要说明你的实现思路，然后提供完整的代码。"""
         
@@ -146,6 +153,8 @@ class CodeEvaluatorAgent(XAIAgent):
 5. 考虑边缘情况和异常处理是否完整
 6. 检查是否遵循Python最佳实践和设计模式
 
+如果代码包含多个文件，请对每个文件进行评估，或者提供整体评估。
+
 请按照以下格式提供评估:
 
 ## 代码评估
@@ -169,7 +178,136 @@ class CodeEvaluatorAgent(XAIAgent):
             temperature=0.1  # Use even lower temperature for more consistent evaluation
         )
 
-def extract_code_from_markdown(markdown_text):
+def extract_files_from_response(response_text: str) -> Dict[str, str]:
+    """
+    Extract multiple files from response text
+    
+    Args:
+        response_text: Text containing file code blocks
+        
+    Returns:
+        Dictionary mapping filenames to code content
+    """
+    # First try to extract files with explicit FILE: markers
+    file_pattern = r"FILE:\s*([^\n]+?)\s*```(?:python|html|javascript|js|css)?\s*([\s\S]*?)```"
+    file_matches = re.findall(file_pattern, response_text)
+    
+    files = {}
+    
+    if file_matches:
+        # Found files with explicit markers
+        for filename, content in file_matches:
+            # Sanitize filename to remove invalid characters
+            safe_filename = sanitize_filename(filename.strip())
+            files[safe_filename] = content.strip()
+    else:
+        # Try to find filename hints in text
+        filename_hints = re.findall(r'(?:Let\'s create|create|saving|save|file|named|called)\s+`?([a-zA-Z0-9_]+\.[a-z]+)`?', response_text)
+        
+        # Find all code blocks with different languages
+        code_blocks = []
+        for lang in ["python", "html", "javascript", "js", "css", ""]:
+            pattern = r"```(?:" + lang + r")?\s*([\s\S]*?)```"
+            blocks = re.findall(pattern, response_text)
+            code_blocks.extend(blocks)
+        
+        if code_blocks:
+            if len(code_blocks) == 1 and not filename_hints:
+                # Only one code block and no filename hints, determine file type
+                if "<!DOCTYPE html>" in code_blocks[0] or "<html" in code_blocks[0]:
+                    return {"index.html": code_blocks[0].strip()}
+                elif "function" in code_blocks[0] or "const" in code_blocks[0] or "var" in code_blocks[0]:
+                    return {"script.js": code_blocks[0].strip()}
+                else:
+                    return {"main.py": code_blocks[0].strip()}
+            elif len(code_blocks) == len(filename_hints):
+                # Map each filename hint to a code block
+                for i, filename in enumerate(filename_hints):
+                    # Sanitize filename
+                    safe_filename = sanitize_filename(filename)
+                    files[safe_filename] = code_blocks[i].strip()
+            else:
+                # Detect file types by content
+                detected_files = {}
+                for i, code in enumerate(code_blocks):
+                    if i < len(filename_hints):
+                        # Use hint but sanitize
+                        safe_filename = sanitize_filename(filename_hints[i])
+                        detected_files[safe_filename] = code.strip()
+                    else:
+                        # Determine file type by content
+                        if "<!DOCTYPE html>" in code or "<html" in code:
+                            detected_files[f"index.html"] = code.strip()
+                        elif "import fastapi" in code or "from fastapi import" in code:
+                            detected_files[f"main.py"] = code.strip()
+                        elif "function" in code or "const" in code or "var" in code:
+                            detected_files[f"script.js"] = code.strip()
+                        elif "body" in code and "{" in code:
+                            detected_files[f"styles.css"] = code.strip()
+                        else:
+                            detected_files[f"file_{i+1}.py"] = code.strip()
+                files = detected_files
+        else:
+            # If no code blocks found, return the original text in a default file
+            files["main.py"] = response_text
+    
+    # If still no files detected, create a single file with all content
+    if not files:
+        code = extract_code_from_markdown(response_text)
+        if "<!DOCTYPE html>" in code or "<html" in code:
+            files["index.html"] = code
+        elif "import fastapi" in code or "from fastapi import" in code:
+            files["main.py"] = code
+        else:
+            files["main.py"] = code
+    
+    # Ensure we resolve any duplicate filenames by adding a suffix
+    resolved_files = {}
+    for filename, content in files.items():
+        base, ext = os.path.splitext(filename)
+        counter = 1
+        new_filename = filename
+        while new_filename in resolved_files:
+            new_filename = f"{base}_{counter}{ext}"
+            counter += 1
+        resolved_files[new_filename] = content
+        
+    return resolved_files
+
+def sanitize_filename(filename: str) -> str:
+    """
+    Sanitize a filename to remove invalid characters
+    
+    Args:
+        filename: Original filename
+        
+    Returns:
+        Sanitized filename
+    """
+    # Remove invalid characters
+    invalid_chars = r'[<>:"/\\|?*]'
+    sanitized = re.sub(invalid_chars, '', filename)
+    
+    # Replace spaces with underscores
+    sanitized = sanitized.replace(' ', '_')
+    
+    # Trim excessively long filenames
+    if len(sanitized) > 100:
+        base, ext = os.path.splitext(sanitized)
+        sanitized = base[:95] + ext
+        
+    # Use a default name if empty
+    if not sanitized or sanitized == '.':
+        return "main.py"
+    
+    # Ensure we have an extension
+    if '.' not in sanitized:
+        # Add appropriate extension based on content
+        sanitized += ".py"
+        
+    return sanitized
+
+def extract_code_from_markdown(markdown_text: str) -> str:
     """
     Extract code from markdown formatted text that has ```python ... ``` blocks
     
@@ -190,7 +328,7 @@ def extract_code_from_markdown(markdown_text):
         # If no code blocks found, return the original text
         return markdown_text
 
-def get_module_name_from_task(task_description):
+def get_module_name_from_task(task_description: str) -> str:
     """
     Generate a suitable module name from the task description
     
@@ -225,8 +363,18 @@ def get_module_name_from_task(task_description):
         
     return name
 
+def generate_project_dir_name() -> str:
+    """
+    Generate a project directory name using timestamp
+    
+    Returns:
+        A directory name using timestamp format
+    """
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    return f"project_{timestamp}"
+
 # Define code generation evaluation workflow function
-def run_code_generation_evaluation_workflow(task_description: str) -> Dict[str, str]:
+def run_code_generation_evaluation_workflow(task_description: str) -> Dict[str, Any]:
     """
     Run complete code generation and evaluation workflow with two rounds of interaction
     
@@ -243,10 +391,13 @@ def run_code_generation_evaluation_workflow(task_description: str) -> Dict[str, 
     # Dictionary for storing results
     results = {
         "task_description": task_description,
-        "initial_code": "",
+        "initial_code_response": "",
+        "initial_files": {},
         "initial_evaluation": "",
-        "optimized_code": "",
+        "optimized_code_response": "",
+        "optimized_files": {},
         "final_evaluation": "",
+        "project_dir": generate_project_dir_name()
     }
     
     # First round: code generation
@@ -258,30 +409,40 @@ def run_code_generation_evaluation_workflow(task_description: str) -> Dict[str, 
 
 {task_description}
 
+If the task requires multiple files, please create separate files and clearly indicate the filename for each file using the format 'FILE: filename.py' before each code block.
+
 Please provide a complete implementation and ensure the code can run directly."""
     
     initial_code_response = code_generator.generate_response(code_prompt)
-    # Extract actual code from markdown formatted response
-    initial_code = extract_code_from_markdown(initial_code_response)
-    results["initial_code"] = initial_code
-    logger.info(f"First round code generation completed, length: {len(initial_code)} characters")
+    results["initial_code_response"] = initial_code_response
+    
+    # Extract files from the response
+    initial_files = extract_files_from_response(initial_code_response)
+    results["initial_files"] = initial_files
+    
+    logger.info(f"First round code generation completed. Number of files: {len(initial_files)}")
+    for filename in initial_files:
+        logger.info(f"  - {filename}: {len(initial_files[filename])} characters")
     
     # First round: code evaluation
     logger.info("="*80)
     logger.info("Starting first round of code evaluation")
     logger.info("="*80)
     
+    # Prepare the evaluation prompt based on files
     evaluation_prompt = f"""Please evaluate the following Python code based on the requirements:
 
 Task Description:
 {task_description}
 
 Code Implementation:
-```python
-{initial_code}
-```
-
-Please evaluate the code quality in detail, identify strengths and weaknesses, and provide specific optimization suggestions."""
+"""
+    
+    # Add code blocks for each file
+    for filename, content in initial_files.items():
+        evaluation_prompt += f"\nFILE: {filename}\n```python\n{content}\n```\n"
+    
+    evaluation_prompt += "\nPlease evaluate the code quality in detail, identify strengths and weaknesses, and provide specific optimization suggestions for each file."
     
     initial_evaluation = code_evaluator.generate_response(evaluation_prompt)
     results["initial_evaluation"] = initial_evaluation
@@ -298,20 +459,31 @@ Original Task:
 {task_description}
 
 Your original code implementation:
-```python
-{initial_code}
-```
+"""
 
+    # Add code blocks for each file
+    for filename, content in initial_files.items():
+        optimization_prompt += f"\nFILE: {filename}\n```python\n{content}\n```\n"
+    
+    optimization_prompt += f"""
 Evaluation Feedback:
 {initial_evaluation}
 
-Please provide an optimized complete code implementation based on the evaluation. Pay special attention to addressing the issues identified in the evaluation."""
+Please provide an optimized complete code implementation based on the evaluation. 
+Pay special attention to addressing the issues identified in the evaluation.
+
+If the implementation requires multiple files, please clearly indicate each filename using the format 'FILE: filename.py' before each code block."""
     
     optimized_code_response = code_generator.generate_response(optimization_prompt)
-    # Extract actual optimized code from markdown formatted response
-    optimized_code = extract_code_from_markdown(optimized_code_response)
-    results["optimized_code"] = optimized_code
-    logger.info(f"Optimized code generation completed, length: {len(optimized_code)} characters")
+    results["optimized_code_response"] = optimized_code_response
+    
+    # Extract optimized files
+    optimized_files = extract_files_from_response(optimized_code_response)
+    results["optimized_files"] = optimized_files
+    
+    logger.info(f"Optimized code generation completed. Number of files: {len(optimized_files)}")
+    for filename in optimized_files:
+        logger.info(f"  - {filename}: {len(optimized_files[filename])} characters")
     
     # Final evaluation
     logger.info("="*80)
@@ -324,17 +496,22 @@ Task Description:
 {task_description}
 
 Original Code:
-```python
-{initial_code}
-```
+"""
 
-Optimized Code:
-```python
-{optimized_code}
-```
-
-Please evaluate whether the optimized code addresses the issues identified in the previous evaluation, whether the overall code quality has improved,
-and whether there is still room for further improvement. Please provide a detailed final evaluation."""
+    # Add original code blocks
+    for filename, content in initial_files.items():
+        final_evaluation_prompt += f"\nFILE: {filename}\n```python\n{content}\n```\n"
+    
+    final_evaluation_prompt += "\nOptimized Code:\n"
+    
+    # Add optimized code blocks
+    for filename, content in optimized_files.items():
+        final_evaluation_prompt += f"\nFILE: {filename}\n```python\n{content}\n```\n"
+    
+    final_evaluation_prompt += """
+Please evaluate whether the optimized code addresses the issues identified in the previous evaluation, 
+whether the overall code quality has improved, and whether there is still room for further improvement. 
+Please provide a detailed final evaluation for each file and an overall assessment."""
     
     final_evaluation = code_evaluator.generate_response(final_evaluation_prompt)
     results["final_evaluation"] = final_evaluation
@@ -350,7 +527,7 @@ and whether there is still room for further improvement. Please provide a detail
     
     return results
 
-def save_results(results: Dict[str, str], output_dir: str = "generated_code") -> None:
+def save_results(results: Dict[str, Any], output_dir: str = "generated_code") -> None:
     """
     Save workflow results to appropriate files
     
@@ -361,48 +538,62 @@ def save_results(results: Dict[str, str], output_dir: str = "generated_code") ->
     # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
     
-    # Get module name
-    module_name = results["module_name"]
+    # Get project directory name
+    project_dir = results["project_dir"]
+    project_path = os.path.join(output_dir, project_dir)
     
-    # Save optimized code as Python file
-    with open(os.path.join(output_dir, f"{module_name}.py"), "w", encoding="utf-8") as f:
-        f.write(results["optimized_code"])
+    # Create subdirectory for this specific project
+    os.makedirs(project_path, exist_ok=True)
+    
+    # Save optimized files
+    optimized_files = results["optimized_files"]
+    saved_files = []
+    
+    for filename, content in optimized_files.items():
+        file_path = os.path.join(project_path, filename)
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        saved_files.append(file_path)
     
     # Save documentation as Markdown file
-    with open(os.path.join(output_dir, f"{module_name}_documentation.md"), "w", encoding="utf-8") as f:
-        f.write(f"# {module_name.replace('_', ' ').title()}\n\n")
+    doc_path = os.path.join(project_path, "documentation.md")
+    with open(doc_path, "w", encoding="utf-8") as f:
+        f.write(f"# Generated Project: {project_dir}\n\n")
         
         # Add task description section
         f.write(f"## Task Description\n\n{results['task_description']}\n\n")
         
         # Add usage instructions
         f.write(f"## Usage\n\n")
-        f.write(f"The code is available in the file `{module_name}.py`.\n\n")
-        f.write(f"### How to Use\n\n")
-        f.write(f"1. Import the module:\n```python\nimport {module_name}\n```\n\n")
+        f.write(f"The code is available in the following files:\n\n")
+        
+        for filename in optimized_files.keys():
+            f.write(f"- `{filename}`\n")
+        f.write("\n")
         
         # Add code evaluation
         f.write(f"## Code Evaluation\n\n{results['final_evaluation']}\n\n")
         
-        # Add both code versions for reference
-        f.write(f"## Original Code (for reference)\n\n```python\n{results['initial_code']}\n```\n\n")
-        f.write(f"## Optimized Code (implemented)\n\n```python\n{results['optimized_code']}\n```\n\n")
+        # Add files section with original and optimized versions
+        f.write(f"## Original Code (for reference)\n\n")
+        for filename, content in results["initial_files"].items():
+            f.write(f"### {filename}\n\n```python\n{content}\n```\n\n")
+        
+        f.write(f"## Optimized Code (implemented)\n\n")
+        for filename, content in optimized_files.items():
+            f.write(f"### {filename}\n\n```python\n{content}\n```\n\n")
     
-    logger.info(f"Results saved to {output_dir}/{module_name}.py and {output_dir}/{module_name}_documentation.md")
-    print(f"\nFiles generated successfully:")
-    print(f"- Code file: {os.path.join(output_dir, f'{module_name}.py')}")
-    print(f"- Documentation: {os.path.join(output_dir, f'{module_name}_documentation.md')}")
+    logger.info(f"Results saved to directory: {project_path}")
+    print(f"\nFiles generated successfully in directory: {project_path}")
+    print("Generated files:")
+    for file_path in saved_files:
+        print(f"- {os.path.basename(file_path)}")
+    print(f"- documentation.md")
 
 if __name__ == "__main__":
-    # Example task
+    # Example task - modified to request multiple files
     task = """
-    Implement a weather data analysis tool with the following features:
-    1. Fetch historical weather data for specified cities from the OpenWeatherMap API
-    2. Support data visualization (temperature, humidity, pressure, etc.)
-    3. Calculate basic statistics (average, maximum, minimum, etc.)
-    4. Support exporting data to CSV or JSON format
-    5. Implement a simple weather prediction feature (based on historical data)
-    6. Error handling and logging
+    幫我完成，後端使用 python fastapi 寫一個hello world api，前端寫一個簡單的htnl呼叫後端hello world api，需考慮cros問題
     """
     
     # Run workflow
