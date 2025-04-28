@@ -156,8 +156,39 @@ advanced_config.py 提供了更灵活的选项：
 
 1. 控制台日志：显示整个工作流程的进度
 2. 项目目录：按时间戳创建子目录，格式为 `project_YYYYMMDD_HHMMSS`
-3. 源代码文件：所有生成的源代码文件
-4. 文档文件：包含项目说明、代码评估和参考的Markdown文件
+3. 迭代文件夹：每个迭代版本的代码和评估保存在单独的编号文件夹中（如 `1_iteration_code`、`2_iteration_code` 等）
+4. 源代码文件：所有生成的源代码文件，最终版本同时保存在根目录和最后一个迭代文件夹中
+5. 文档文件：包含项目说明、代码评估和参考的Markdown文件
+
+### 迭代文件夹结构
+
+系统现在为每次代码迭代和评估创建单独的编号文件夹：
+
+```
+results/
+  └── project_20250428_123456/            # 按时间戳命名的项目目录
+      ├── 1_iteration_code/               # 第一次迭代
+      │   ├── main.py                     # 初始版本代码
+      │   ├── index.html                  # 初始版本HTML（如有）
+      │   └── code_review.md              # 此次迭代的代码评估结果
+      ├── 2_iteration_code/               # 第二次迭代
+      │   ├── main.py                     # 改进后代码
+      │   ├── index.html                  # 改进后HTML（如有）
+      │   └── code_review.md              # 此次迭代的代码评估结果
+      ├── N_iteration_code/               # 第N次迭代（如设置多轮迭代）
+      │   ├── main.py                     # 最终版本代码
+      │   ├── index.html                  # 最终版本HTML（如有）
+      │   └── code_review.md              # 最终代码评估结果
+      ├── main.py                         # 最终版本代码（与最后迭代相同）
+      ├── index.html                      # 最终版本HTML（与最后迭代相同）
+      └── documentation.md                # 完整项目文档（包含所有迭代信息）
+```
+
+这种结构使您可以：
+- 清晰地追踪代码的演化过程
+- 比较不同迭代版本的代码变化
+- 查看每个迭代的评估和反馈
+- 分析代码质量如何随着每次迭代而提高
 
 ## 常见问题
 
@@ -203,17 +234,29 @@ advanced_config.py 提供了更灵活的选项：
 
 ## 项目目录结构
 
-生成的项目目录结构如下：
+生成的项目目录结构现在更加完善，包含迭代文件夹：
 
 ```
 results/
-  └── project_20250428_123456/    # 按时间戳命名的项目目录
-      ├── main.py                # 生成的Python源文件
-      ├── index.html             # 生成的HTML文件（如有）
-      ├── styles.css             # 生成的CSS文件（如有）
-      ├── script.js              # 生成的JavaScript文件（如有）
-      └── documentation.md       # 项目文档和评估结果
+  └── project_20250428_123456/            # 按时间戳命名的项目目录
+      ├── 1_iteration_code/               # 第一次迭代
+      │   ├── main.py                     # 初始版本代码
+      │   ├── index.html                  # 初始版本HTML（如有）
+      │   └── code_review.md              # 此次迭代的代码评估结果
+      ├── 2_iteration_code/               # 第二次迭代
+      │   ├── main.py                     # 改进后代码
+      │   ├── index.html                  # 改进后HTML（如有）
+      │   └── code_review.md              # 此次迭代的代码评估结果
+      ├── main.py                         # 最终版本代码（与最后迭代相同）
+      ├── index.html                      # 最终版本HTML（如有）
+      ├── styles.css                      # 生成的CSS文件（如有）
+      ├── script.js                       # 生成的JavaScript文件（如有）
+      └── documentation.md                # 项目文档和评估结果
 ```
+
+在使用 `enhanced_code_generation_evaluation.py` 时，固定创建两个迭代文件夹：`1_initial_code` 和 `2_optimized_code`。
+
+在使用 `advanced_config.py` 时，根据设置的迭代次数创建相应数量的文件夹：`1_iteration_code`、`2_iteration_code` 等。
 
 ## 支持的文件类型
 
