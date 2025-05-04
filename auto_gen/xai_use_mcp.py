@@ -21,50 +21,76 @@ def get_xai_client() -> OpenAIChatCompletionClient:  # type: ignore
             "json_output": True,
             "vision": True,
             "function_calling": True,
+            "structured_output": True,  # Added missing field
         },
     )
 
 
-async def main():
-    model_client = get_xai_client()
-    server_params = StdioServerParams(
-        command="python",
-        args=["store_count_mcp.py"],
-        read_timeout_seconds=10,
-    )
-    # server_params = StdioServerParams(
-    #     command="mcp-proxy",
-    #     args=["http://localhost:8082/sse"],
-    #     read_timeout_seconds=10,
-    # )
-    db_params = SseServerParams(
-        url="http://localhost:8082/sse", headers={}
-    )
+STORE_MCP_PARAMS = StdioServerParams(
+    command="python",
+    args=["sotre_count_mcp.py"],  # Fixed typo in filename
+    read_timeout_seconds=10,
+)
 
+DB_MCP_PARAMS = SseServerParams(url="http://localhost:8082/sse", headers={})
+
+# server_params = StdioServerParams(
+#     command="mcp-proxy",
+#     args=["http://localhost:8082/sse"],
+#     read_timeout_seconds=10,
+# )
+
+
+async def work_bench_demo():
+    # 目前似乎只支援一組mcp，還在研究
+    async with McpWorkbench(DB_MCP_PARAMS) as mcp:
+        tools = await mcp.list_tools()
+        tool_names = [tool["name"] for tool in tools]
+        print(tool_names)
+
+        agent = AssistantAgent(
+            "local_assistant",
+            system_message="""
+            你是一個本地管理員，專注於處裡本地資訊，當結束查詢時請說 END
+            """,
+            model_client=get_xai_client(),
+            workbench=mcp,
+            model_client_stream=True,
+        )
+        termination = TextMentionTermination("END")
+        team = RoundRobinGroupChat(
+            [agent],
+            termination_condition=termination,
+        )
+        await Console(team.run_stream(task="有哪些 db表能用"))
+
+
+async def mcp_demo():
+    model_client = get_xai_client()
     try:
-        store_tools = await mcp_server_tools(server_params)
-        db_tools = await mcp_server_tools(db_params)
+        store_tools = await mcp_server_tools(STORE_MCP_PARAMS)
+        db_tools = await mcp_server_tools(DB_MCP_PARAMS)
 
         tools = store_tools + db_tools
-        async with McpWorkbench(server_params) as mcp:
-            agent = AssistantAgent(
-                "local_assistant",
-                system_message="""
-                你是一個本地管理員，專注於處裡本地資訊，當結束查詢時請說 END
-                """,
-                model_client=model_client,
-                # workbench=mcp, # use StdioServerParams need setting this
-                tools=tools, # use SseServerParams need setting this
-                model_client_stream=True,
-            )
+        agent = AssistantAgent(
+            "local_assistant",
+            system_message="""
+            你是一個本地管理員，專注於處裡本地資訊，當結束查詢時請說 END
+            """,
+            model_client=model_client,
+            tools=tools,
+            model_client_stream=True,
+        )
 
-            termination = TextMentionTermination("END")
-            team = RoundRobinGroupChat(
-                [agent],
-                termination_condition=termination,
-            )
-            # await Console(team.run_stream(task="目前有哪些表格能使用"))
-            await Console(team.run_stream(task="STORE1 有幾人, 又有哪些db能用，再給我一個sqlalchemy的範例"))
+        termination = TextMentionTermination("END")
+        team = RoundRobinGroupChat(
+            [agent],
+            termination_condition=termination,
+        )
+        # await Console(team.run_stream(task="目前有哪些表格能使用"))
+        await Console(
+            team.run_stream(task="STORE1 有幾人, 又有哪些db能用，再給我一個sqlalchemy的範例")
+        )
     except Exception as ex:
         print(ex)
     finally:
@@ -73,4 +99,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(work_bench_demo())

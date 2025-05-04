@@ -8,15 +8,11 @@ AutoGen 代碼生成與優化系統
 __version__ = "0.1.0"
 
 from .autogen_code_agents import run_code_generation_review_cycle
-from .autogen_code_agents_extended import (
-    CodeGenerationSystem,
-    PREDEFINED_TASKS,
-    get_gemini_config
-)
+from .autogen_code_agents_extended import CodeGenerationSystem, PREDEFINED_TASKS, get_gemini_config
 
 __all__ = [
     "run_code_generation_review_cycle",
     "CodeGenerationSystem",
     "PREDEFINED_TASKS",
-    "get_gemini_config"
+    "get_gemini_config",
 ]

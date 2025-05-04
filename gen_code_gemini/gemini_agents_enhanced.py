@@ -8,7 +8,7 @@
 4. 在JSON记录中保存随机文件夹的名称和所有生成的文件路径
 """
 
-# 安装依赖: 
+# 安装依赖:
 # pip install google-generativeai=="0.7.1"
 
 import os
@@ -43,7 +43,6 @@ PREDEFINED_TASKS = {
         4. 提供一个简单的命令行界面
         5. 包含文档字符串和示例用法
     """,
-    
     "web_scraper": """
         请编写一个 Python 程序，实现以下功能：
         1. 创建一个网页爬虫类，可以爬取指定网站的内容
@@ -57,7 +56,6 @@ PREDEFINED_TASKS = {
         4. 使用异步处理提高效率
         5. 包含完整的文档和使用示例
     """,
-    
     "api_server": """
         请编写一个 Python 程序，实现以下功能：
         1. 使用 FastAPI 创建一个 RESTful API 服务器
@@ -72,8 +70,9 @@ PREDEFINED_TASKS = {
         5. 添加请求记录和错误处理
         6. 包含 Swagger/OpenAPI 文档
         7. 提供单元测试
-    """
+    """,
 }
+
 
 # 定义 Gemini 模型配置
 def get_gemini_config(model_name="gemini-2.5-pro-exp-03-25", temperature=0.3):
@@ -84,6 +83,7 @@ def get_gemini_config(model_name="gemini-2.5-pro-exp-03-25", temperature=0.3):
         "top_k": 32,
         "max_output_tokens": 8192,
     }
+
 
 # 定义 Agent A 的系统消息
 def get_coder_system_message(task_complexity="standard"):
@@ -141,6 +141,7 @@ def get_coder_system_message(task_complexity="standard"):
         
         代码应该遵循 PEP 8 风格指南，包含适当的错误处理、文档字符串和注释。
         """
+
 
 # 定义 Agent B 的系统消息
 def get_reviewer_system_message(review_depth="standard"):
@@ -238,12 +239,19 @@ def get_reviewer_system_message(review_depth="standard"):
         提供优化建议时，请使用与Agent A相同的文件格式，明确指出每个应该优化的文件。
         """
 
+
 class GeminiAgent:
     """基于 Gemini 的智能代理"""
-    
-    def __init__(self, name: str, system_message: str, model: str = "gemini-2.5-pro-exp-03-25", temperature: float = 0.3):
+
+    def __init__(
+        self,
+        name: str,
+        system_message: str,
+        model: str = "gemini-2.5-pro-exp-03-25",
+        temperature: float = 0.3,
+    ):
         """初始化代理
-        
+
         Args:
             name: 代理名称
             system_message: 系统提示
@@ -255,7 +263,7 @@ class GeminiAgent:
         self.model = model
         self.temperature = temperature
         self.chat_history = []
-        
+
         # 初始化模型
         generation_config = {
             "temperature": temperature,
@@ -264,61 +272,61 @@ class GeminiAgent:
             "max_output_tokens": 8192,
         }
         self.gemini_model = genai.GenerativeModel(
-            model_name=model,
-            generation_config=generation_config
+            model_name=model, generation_config=generation_config
         )
-        
+
     def send_message(self, message: str) -> str:
         """向代理发送消息并获取回应
-        
+
         Args:
             message: 输入消息
-        
+
         Returns:
             代理的回应
         """
         # 构建完整提示，包含系统消息和历史
         full_prompt = f"{self.system_message}\n\n"
-        
+
         # 添加历史记录
         for msg in self.chat_history:
             if msg["role"] == "user":
                 full_prompt += f"用户: {msg['content']}\n\n"
             else:
                 full_prompt += f"助手: {msg['content']}\n\n"
-        
+
         # 添加当前消息
         full_prompt += f"用户: {message}\n\n助手: "
-        
+
         try:
             # 调用 Gemini API
             response = self.gemini_model.generate_content(full_prompt)
             response_text = response.text
-            
+
             # 保存对话历史
             self.chat_history.append({"role": "user", "content": message})
             self.chat_history.append({"role": "assistant", "content": response_text})
-            
+
             return response_text
         except Exception as e:
             print(f"API 调用出错: {e}")
             return f"发生错误: {e}"
 
+
 def extract_code_files(text: str) -> dict:
     """从代理回应中提取多个代码文件
-    
+
     Args:
         text: 包含代码文件的文本
-    
+
     Returns:
         字典，键为文件名，值为代码内容
     """
     # 匹配 "=== file: filename.py ===" 格式的模式
     pattern = r"===\s*file:\s*([^\s=]+)\s*===\s*```(?:python)?\s*(.*?)```"
-    
+
     # 使用正则表达式查找所有匹配项，使用 re.DOTALL 标志匹配包括换行符在内的所有字符
     matches = re.findall(pattern, text, re.DOTALL)
-    
+
     # 创建文件名到代码内容的映射
     files = {}
     for filename, code in matches:
@@ -326,7 +334,7 @@ def extract_code_files(text: str) -> dict:
         filename = filename.strip()
         code = code.strip()
         files[filename] = code
-    
+
     # 如果没有找到匹配项，查找单个代码块
     if not files:
         single_code_pattern = r"```(?:python)?\s*(.*?)```"
@@ -334,22 +342,23 @@ def extract_code_files(text: str) -> dict:
         if code_matches:
             # 使用默认文件名
             files["main.py"] = code_matches[0].strip()
-    
+
     return files
+
 
 def save_code_to_files(files: dict, output_dir: str) -> List[str]:
     """将代码保存到指定目录的文件中
-    
+
     Args:
         files: 字典，键为文件名，值为代码内容
         output_dir: 输出目录路径
-    
+
     Returns:
         保存的文件路径列表
     """
     # 确保输出目录存在
     os.makedirs(output_dir, exist_ok=True)
-    
+
     saved_files = []
     for filename, code in files.items():
         file_path = os.path.join(output_dir, filename)
@@ -357,12 +366,13 @@ def save_code_to_files(files: dict, output_dir: str) -> List[str]:
             f.write(code)
         saved_files.append(file_path)
         print(f"已保存文件: {file_path}")
-    
+
     return saved_files
+
 
 def create_output_directory() -> str:
     """创建随机命名的输出目录
-    
+
     Returns:
         创建的目录路径
     """
@@ -370,28 +380,29 @@ def create_output_directory() -> str:
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     random_suffix = str(uuid.uuid4())[:8]  # 使用UUID的前8个字符作为随机后缀
     dir_name = f"generated_code_{timestamp}_{random_suffix}"
-    
+
     # 在当前工作目录中创建此目录
     os.makedirs(dir_name, exist_ok=True)
-    
+
     return os.path.abspath(dir_name)
+
 
 class CodeGenerationSystem:
     """代码生成与优化系统"""
-    
+
     def __init__(
-        self, 
-        task=None, 
+        self,
+        task=None,
         task_name=None,
         model_name="gemini-2.5-pro-exp-03-25",
         temperature=0.3,
         rounds=2,
         task_complexity="standard",
         review_depth="standard",
-        save_history=True
+        save_history=True,
     ):
         """初始化代码生成系统
-        
+
         Args:
             task: 自定义任务描述
             task_name: 预定义任务的名称
@@ -408,7 +419,7 @@ class CodeGenerationSystem:
         self.save_history = save_history
         self.task_complexity = task_complexity
         self.review_depth = review_depth
-        
+
         # 确定任务
         if task_name and task_name in PREDEFINED_TASKS:
             self.task = PREDEFINED_TASKS[task_name]
@@ -416,26 +427,26 @@ class CodeGenerationSystem:
             self.task = task
         else:
             self.task = PREDEFINED_TASKS["data_analyzer"]  # 默认任务
-        
+
         # 初始化代理
         self.coder_agent = GeminiAgent(
             name="CodeWriter",
             system_message=get_coder_system_message(task_complexity),
             model=model_name,
-            temperature=temperature
+            temperature=temperature,
         )
-        
+
         self.reviewer_agent = GeminiAgent(
             name="CodeReviewer",
             system_message=get_reviewer_system_message(review_depth),
             model=model_name,
-            temperature=temperature
+            temperature=temperature,
         )
-        
+
         # 创建随机目录用于存储生成的代码
         self.output_directory = create_output_directory()
         print(f"创建输出目录: {self.output_directory}")
-        
+
         # 用于保存结果
         self.results = {
             "task": self.task,
@@ -445,39 +456,39 @@ class CodeGenerationSystem:
             "task_complexity": task_complexity,
             "review_depth": review_depth,
             "output_directory": self.output_directory,
-            "iterations": []
+            "iterations": [],
         }
-    
+
     def run(self):
         """执行代码生成和审查的互动循环"""
         print(f"开始代码生成和优化流程 ({self.rounds} 轮)...")
-        
+
         # 第一步：代码编写者生成初始代码
         print("第 0 步: 生成初始代码...")
         initial_code_response = self.coder_agent.send_message(self.task)
-        
+
         # 提取并保存初始代码
         initial_files = extract_code_files(initial_code_response)
         if not initial_files:
             print("警告: 无法从初始回应中提取代码文件")
             initial_files = {"main.py": initial_code_response}  # 保存原始回应作为备份
-        
+
         # 保存初始代码到初始版本子目录
         initial_code_dir = os.path.join(self.output_directory, "version_0_initial")
         initial_file_paths = save_code_to_files(initial_files, initial_code_dir)
-        
+
         # 记录初始代码信息
         self.results["initial_code"] = {
             "response": initial_code_response,
             "files": initial_files,
             "directory": initial_code_dir,
-            "file_paths": initial_file_paths
+            "file_paths": initial_file_paths,
         }
-        
+
         # 进行多轮交互
         for round_num in range(1, self.rounds + 1):
             print(f"\n--- 第 {round_num} 轮交互 ---")
-            
+
             # 构建审查消息
             if round_num == 1:
                 file_text = ""
@@ -490,42 +501,46 @@ class CodeGenerationSystem:
                 for filename, code in prev_optimized_files.items():
                     file_text += f"\n=== file: {filename} ===\n```python\n{code}\n```\n"
                 review_message = f"请评估以下代码并提供优化建议：\n{file_text}"
-            
+
             # 发送给代码审查者进行评估
             print(f"步骤 {round_num}.1: 代码审查...")
             review_response = self.reviewer_agent.send_message(review_message)
-            
+
             # 代码编写者根据评估进行优化
             print(f"步骤 {round_num}.2: 代码优化...")
-            optimize_message = f"根据以下审查反馈优化你的代码 (第 {round_num} 轮)：\n\n{review_response}"
+            optimize_message = (
+                f"根据以下审查反馈优化你的代码 (第 {round_num} 轮)：\n\n{review_response}"
+            )
             optimized_code_response = self.coder_agent.send_message(optimize_message)
-            
+
             # 提取并保存优化后的代码
             optimized_files = extract_code_files(optimized_code_response)
             if not optimized_files:
                 print(f"警告: 无法从第 {round_num} 轮优化回应中提取代码文件")
                 optimized_files = {"main.py": optimized_code_response}  # 保存原始回应作为备份
-            
+
             # 创建版本目录并保存代码
-            optimized_code_dir = os.path.join(self.output_directory, f"version_{round_num}_optimized")
+            optimized_code_dir = os.path.join(
+                self.output_directory, f"version_{round_num}_optimized"
+            )
             optimized_file_paths = save_code_to_files(optimized_files, optimized_code_dir)
-            
+
             # 保存本轮结果
-            self.results["iterations"].append({
-                "round": round_num,
-                "review": {
-                    "response": review_response
-                },
-                "optimized_code": {
-                    "response": optimized_code_response,
-                    "files": optimized_files,
-                    "directory": optimized_code_dir,
-                    "file_paths": optimized_file_paths
+            self.results["iterations"].append(
+                {
+                    "round": round_num,
+                    "review": {"response": review_response},
+                    "optimized_code": {
+                        "response": optimized_code_response,
+                        "files": optimized_files,
+                        "directory": optimized_code_dir,
+                        "file_paths": optimized_file_paths,
+                    },
                 }
-            })
-            
+            )
+
             print(f"第 {round_num} 轮完成，代码已保存至: {optimized_code_dir}")
-        
+
         # 最后审查
         print("\n--- 最终评估 ---")
         final_files = self.results["iterations"][-1]["optimized_code"]["files"]
@@ -533,29 +548,29 @@ class CodeGenerationSystem:
         for filename, code in final_files.items():
             file_text += f"\n=== file: {filename} ===\n```python\n{code}\n```\n"
         final_review_message = f"请对最终优化后的代码进行评估：\n{file_text}"
-        
+
         final_review_response = self.reviewer_agent.send_message(final_review_message)
         self.results["final_review"] = final_review_response
-        
+
         # 创建最终版本目录，复制最后一轮优化的文件
         final_code_dir = os.path.join(self.output_directory, "final_version")
         final_file_paths = save_code_to_files(final_files, final_code_dir)
         self.results["final_code"] = {
             "files": final_files,
             "directory": final_code_dir,
-            "file_paths": final_file_paths
+            "file_paths": final_file_paths,
         }
-        
+
         print("\n--- 代码生成和优化流程完成 ---")
         print(f"所有生成的代码已保存到目录: {self.output_directory}")
         print(f"最终版本代码位于: {final_code_dir}")
-        
+
         # 保存结果记录到输出目录
         if self.save_history:
             self._save_history()
-        
+
         return self.results
-    
+
     def _save_history(self):
         """保存互动历史记录到输出目录"""
         history_file = os.path.join(self.output_directory, "generation_history.json")
@@ -563,19 +578,23 @@ class CodeGenerationSystem:
             # 创建一个简化版本的结果，去除大型文本内容
             simplified_results = self._simplify_results_for_json()
             json.dump(simplified_results, f, ensure_ascii=False, indent=2)
-        
+
         # 创建一个详细的记录文件
-        detailed_history_file = os.path.join(self.output_directory, "detailed_generation_history.json")
+        detailed_history_file = os.path.join(
+            self.output_directory, "detailed_generation_history.json"
+        )
         with open(detailed_history_file, "w", encoding="utf-8") as f:
             json.dump(self.results, f, ensure_ascii=False, indent=2)
-        
+
         print(f"历史记录已保存到: {history_file}")
         print(f"详细历史记录已保存到: {detailed_history_file}")
-    
+
     def _simplify_results_for_json(self):
         """创建一个简化版本的结果，适合保存为JSON"""
         simplified = {
-            "task": self.task[:200] + "..." if len(self.task) > 200 else self.task,  # 截断长任务描述
+            "task": (
+                self.task[:200] + "..." if len(self.task) > 200 else self.task
+            ),  # 截断长任务描述
             "model": self.model_name,
             "temperature": self.temperature,
             "rounds": self.rounds,
@@ -585,50 +604,67 @@ class CodeGenerationSystem:
             "file_summary": {
                 "initial_files": list(self.results.get("initial_code", {}).get("files", {}).keys()),
                 "final_files": list(self.results.get("final_code", {}).get("files", {}).keys()),
-                "iterations": []
-            }
+                "iterations": [],
+            },
         }
-        
+
         # 添加迭代信息
         for iteration in self.results.get("iterations", []):
-            simplified["file_summary"]["iterations"].append({
-                "round": iteration.get("round"),
-                "optimized_files": list(iteration.get("optimized_code", {}).get("files", {}).keys())
-            })
-        
+            simplified["file_summary"]["iterations"].append(
+                {
+                    "round": iteration.get("round"),
+                    "optimized_files": list(
+                        iteration.get("optimized_code", {}).get("files", {}).keys()
+                    ),
+                }
+            )
+
         return simplified
+
 
 def parse_args():
     """解析命令行参数"""
     parser = argparse.ArgumentParser(description="基于 Gemini 的代码生成与优化系统")
-    
+
     # 基本参数
     parser.add_argument("--task", type=str, help="自定义任务描述")
-    parser.add_argument("--task_name", type=str, choices=list(PREDEFINED_TASKS.keys()),
-                        help="预定义任务名称")
-    
+    parser.add_argument(
+        "--task_name", type=str, choices=list(PREDEFINED_TASKS.keys()), help="预定义任务名称"
+    )
+
     # 模型参数
-    parser.add_argument("--model", type=str, default="gemini-2.5-pro-exp-03-25",
-                       help="使用的模型名称")
-    parser.add_argument("--temperature", type=float, default=0.3,
-                       help="模型温度参数 (0.0-1.0)")
-    
+    parser.add_argument(
+        "--model", type=str, default="gemini-2.5-pro-exp-03-25", help="使用的模型名称"
+    )
+    parser.add_argument("--temperature", type=float, default=0.3, help="模型温度参数 (0.0-1.0)")
+
     # 系统参数
-    parser.add_argument("--rounds", type=int, default=2,
-                       help="交互轮数")
-    parser.add_argument("--task_complexity", type=str, choices=["standard", "advanced"],
-                       default="standard", help="任务复杂度")
-    parser.add_argument("--review_depth", type=str, choices=["standard", "detailed"],
-                       default="standard", help="审查深度")
-    parser.add_argument("--no_save", action="store_false", dest="save_history",
-                       help="不保存历史记录")
-    
+    parser.add_argument("--rounds", type=int, default=2, help="交互轮数")
+    parser.add_argument(
+        "--task_complexity",
+        type=str,
+        choices=["standard", "advanced"],
+        default="standard",
+        help="任务复杂度",
+    )
+    parser.add_argument(
+        "--review_depth",
+        type=str,
+        choices=["standard", "detailed"],
+        default="standard",
+        help="审查深度",
+    )
+    parser.add_argument(
+        "--no_save", action="store_false", dest="save_history", help="不保存历史记录"
+    )
+
     return parser.parse_args()
+
 
 def main():
     """主函数"""
     args = parse_args()
-    
+
     # 创建代码生成系统
     system = CodeGenerationSystem(
         task=args.task,
@@ -638,16 +674,17 @@ def main():
         rounds=args.rounds,
         task_complexity=args.task_complexity,
         review_depth=args.review_depth,
-        save_history=args.save_history
+        save_history=args.save_history,
     )
-    
+
     # 运行系统
     results = system.run()
-    
+
     print("\n代码生成和优化流程完成！")
     print(f"所有文件已保存到目录: {results['output_directory']}")
-    
+
     return results
+
 
 if __name__ == "__main__":
     main()

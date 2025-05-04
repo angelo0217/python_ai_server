@@ -7,8 +7,17 @@ requires-python = ">=3.13"
 dependencies = [
     "aiohttp>=3.11.18",
     "aiosqlite>=0.21.0",
+    "autogen-agentchat>=0.5.6",
+    "autogen-ext[azure,magentic-one,ollama,openai]>=0.5.6",
+    "autogenstudio>=0.0.49",
     "black>=25.1.0",
+    "google-search-results>=2.4.2",
+    "litellm[proxy]>=1.9.4",
     "mcp>=1.6.0",
+    "nest-asyncio>=1.6.0",
+    "pyngrok>=7.2.5",
     "requests>=2.32.3",
+    "rich>=14.0.0",
     "uvicorn>=0.34.2",
+    "yfinance>=0.2.57",
 ]
