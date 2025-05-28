@@ -1,11 +1,11 @@
 import autogen
 
 config_list = autogen.config_list_from_json(
-    "OAI_CONFIG_LIST", # 確保你的環境變數或文件正確
-    filter_dict={"model": ["gpt-4", "gpt-3.5-turbo"]}, # 選擇你想要的模型
+    "OAI_CONFIG_LIST",  # 確保你的環境變數或文件正確
+    filter_dict={"model": ["gpt-4", "gpt-3.5-turbo"]},  # 選擇你想要的模型
 )
 
-llm_config = {"config_list": config_list, "cache_seed": 42} # cache_seed 用於可重複性
+llm_config = {"config_list": config_list, "cache_seed": 42}  # cache_seed 用於可重複性
 
 # 1. 定義代理
 agent_a_system_message = """你是團隊的協調者 (Coordinator)。
@@ -49,21 +49,21 @@ agent_c = autogen.AssistantAgent(
 # 用戶代理，用於發起請求
 user_proxy = autogen.UserProxyAgent(
     name="UserProxy",
-    human_input_mode="NEVER", # 或 "TERMINATE" 或 "ALWAYS"
+    human_input_mode="NEVER",  # 或 "TERMINATE" 或 "ALWAYS"
     max_consecutive_auto_reply=10,
     is_termination_msg=lambda x: x.get("content", "").rstrip().endswith("TERMINATE"),
-    code_execution_config=False, # 這個場景不需要代碼執行
+    code_execution_config=False,  # 這個場景不需要代碼執行
     # system_message="你將發起一個任務，並等待 Coordinator_AgentA 的最終回覆。" # 可選
 )
 
 # 2. 設置群聊
 groupchat = autogen.GroupChat(
-    agents=[user_proxy, agent_a, agent_b, agent_c], # user_proxy 也加入，以便發起和結束
+    agents=[user_proxy, agent_a, agent_b, agent_c],  # user_proxy 也加入，以便發起和結束
     messages=[],
-    max_round=15, # 最大對話輪次
-    speaker_selection_method="auto", # 關鍵！
+    max_round=15,  # 最大對話輪次
+    speaker_selection_method="auto",  # 關鍵！
     # admin_name="Coordinator_AgentA" # 可以考慮設置，讓A在選擇時有更高優先級或作為預設
-    send_introductions=True, # 發送介紹性消息，讓 LLM 了解每個 agent 的角色
+    send_introductions=True,  # 發送介紹性消息，讓 LLM 了解每個 agent 的角色
 )
 
 manager = autogen.GroupChatManager(
