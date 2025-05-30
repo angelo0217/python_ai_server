@@ -11,8 +11,8 @@ from autogen_ext.tools.mcp import StdioServerParams, mcp_server_tools
 X_API_KEY = os.getenv("X_API_KEY")
 
 
-def get_xai_client() -> OpenAIChatCompletionClient:  # type: ignore
-    "Mimic OpenAI API using Local LLM Server."
+def get_ai_client() -> OpenAIChatCompletionClient:  # type: ignore
+    # "Mimic OpenAI API using Local LLM Server."
     return OpenAIChatCompletionClient(
         model="grok-3-beta",
         api_key=X_API_KEY,
@@ -24,6 +24,16 @@ def get_xai_client() -> OpenAIChatCompletionClient:  # type: ignore
             "structured_output": True,  # Added missing field
         },
     )
+    # return OpenAIChatCompletionClient(
+    #     model="llama3.2:latest",
+    #     api_key="ollama",
+    #     base_url="http://localhost:11434/v1",
+    #     model_capabilities={
+    #         "json_output": False,
+    #         "vision": False,
+    #         "function_calling": True,
+    #     },
+    # )
 
 
 GIT_BASE_URL = "https://github.com/angelo0217"
@@ -68,7 +78,8 @@ GIT_MCP = StdioServerParams(
 
 TERMINAL_MCP = StdioServerParams(
     command="npx",
-    args=["@dillip285/mcp-terminal", "--allowed-paths", "/d"],
+    args=["@dillip285/mcp-terminal", "--allowed-paths", "D:\\"],
+    # args=["-y", "@simonb97/server-win-cli"],
     read_timeout_seconds=20,
 )
 
@@ -102,16 +113,22 @@ async def programmer_agent() -> None:
     agent = AssistantAgent(
         "local_assistant",
         system_message=f"""
-                你是一個專業的開發人員。
-                專案操作位置 D:\\
-                使用git開發會先預設使用 git_tools 若失敗則用 terminal_tools。
-                git的base網址 {GIT_BASE_URL}，當clone專案時，並且會組合git的base網址 + 專案名稱去clone，會顯示clone的絕對位置。
-                **請注意：當要求clone專案時，必須提供專案的完整Git URL。如果缺少此資訊，我將無法執行操作並會要求你提供。**
-                若對話無指定閱讀路徑或文件，會優先閱讀完整專案，學習專案結構，再進行需求修改。
+                ## 角色與行為：
+                你是一位專業的資深軟體開發人員，擅長使用中文進行交流和解釋。
+                你的主要工作目錄是 D:\opt。
+                你將通過 **輸出特定JSON格式的指令** 來間接操作工具 (尤其是 Git) 以完成任務。
+                git 基礎位置在 {GIT_BASE_URL}
+                """
+        +
+                """
+                ## 工作行為：
+                會看目前有哪些工具可以達到需求，並操作工具去執行
                 
-                所有活動結束時或告一段落，就會給我 END 的結語
+                ## 結束工作行為
+                會告知git clone位置的絕對路徑
+                會給出 END 字眼來做結束
                 """,
-        model_client=get_xai_client(),
+        model_client=get_ai_client(),
         tools=tools,
         model_client_stream=True,
     )
@@ -122,7 +139,14 @@ async def programmer_agent() -> None:
     )
     await Console(
         team.run_stream(
-            task="幫我clone 專案 python_mcp_server，新建一個 release/demo的分支，在新的分支上新建一個簡單的demo.json範例，內容隨意，然後發布pull request 回 main,給我 pull request 位置"
+            task="""
+            幫我執行
+            1、clone 專案 python_mcp_server
+            2、新建一個 release/demo的分支
+            3、在新的分支上新建一個簡單的demo.json範例，內容隨意
+            4、然後發布pull request 回 main
+            5、給我 pull request 位置
+            """
         )
     )
 

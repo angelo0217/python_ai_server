@@ -1,11 +1,13 @@
+import os
+
 import autogen
 
-config_list = autogen.config_list_from_json(
-    "OAI_CONFIG_LIST",  # 確保你的環境變數或文件正確
-    filter_dict={"model": ["gpt-4", "gpt-3.5-turbo"]},  # 選擇你想要的模型
-)
-
-llm_config = {"config_list": config_list, "cache_seed": 42}  # cache_seed 用於可重複性
+X_API_KEY = os.getenv("X_API_KEY")
+llm_config = {"config_list": {
+        "model": "grok-3-beta",
+        "api_key": X_API_KEY,
+        "base_url": "https://api.x.ai/v1"
+    }, "cache_seed": 42}  # cache_seed 用於可重複性
 
 # 1. 定義代理
 agent_a_system_message = """你是團隊的協調者 (Coordinator)。
