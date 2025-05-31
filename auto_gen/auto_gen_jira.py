@@ -12,7 +12,7 @@ X_API_KEY = os.getenv("X_API_KEY")
 
 
 def get_ai_client() -> OpenAIChatCompletionClient:  # type: ignore
-    # "Mimic OpenAI API using Local LLM Server."
+    "Mimic OpenAI API using Local LLM Server."
     return OpenAIChatCompletionClient(
         model="grok-3-beta",
         api_key=X_API_KEY,
@@ -25,7 +25,7 @@ def get_ai_client() -> OpenAIChatCompletionClient:  # type: ignore
         },
     )
     # return OpenAIChatCompletionClient(
-    #     model="llama3.2:latest",
+    #     model="qwen3:latest",
     #     api_key="ollama",
     #     base_url="http://localhost:11434/v1",
     #     model_capabilities={
@@ -105,6 +105,27 @@ async def jira_agent() -> None:
     await Console(team.run_stream(task="幫我閱讀單號 XXXXX"))
 
 
+system_message_v1 = f"""你是一位專業的資深軟體開發人員，擅長使用中文進行交流和解釋。
+            你的主要工作目錄是 D:\opt。
+            你將通過 **輸出特定JSON格式的指令** 來間接操作工具 (尤其是 Git) 以完成任務。
+            git 基礎位置在 {GIT_BASE_URL}
+            當專案已存在，則會忽略 clone的步驟
+            """ + """
+            ## 工作行為：
+            1、確保專案已經clone 或 已存在
+            2、創建 ai_history_{YYYYMMDDHHmm}.log 在專案內
+            3、每個步驟都會往專案內的 ai_history{YYYYMMDDHHmm}.log 寫入紀錄，添加而非覆蓋
+                ai_history_{YYYYMMDDHHmm}.log 檔案設計：
+                將執行過的內容都記錄起來
+            4、會看目前有哪些工具可以達到需求，並操作工具去執行
+            5、同樣的行為，執行超過5次錯誤或沒結果，就歸類成錯誤，回復使用者視同工作結束
+            
+            ## 結束工作行為
+            會告知git clone位置的絕對路徑
+            會寫是這次 ai_history_{YYYYMMDDHHmm}.log 的名稱
+            會給出 END 字眼來做結束
+            """
+
 async def programmer_agent() -> None:
     git_tools = await mcp_server_tools(GIT_MCP)
     terminal_tools = await mcp_server_tools(TERMINAL_MCP)
@@ -112,29 +133,25 @@ async def programmer_agent() -> None:
     tools = git_tools + terminal_tools
     agent = AssistantAgent(
         "local_assistant",
-        system_message=f"""
-                ## 角色與行為：
-                你是一位專業的資深軟體開發人員，擅長使用中文進行交流和解釋。
-                你的主要工作目錄是 D:\opt。
-                你將通過 **輸出特定JSON格式的指令** 來間接操作工具 (尤其是 Git) 以完成任務。
-                git 基礎位置在 {GIT_BASE_URL}
-                """
-        +
-                """
-                ## 工作行為：
-                會看目前有哪些工具可以達到需求，並操作工具去執行
-                
-                ## 結束工作行為
-                會告知git clone位置的絕對路徑
-                會給出 END 字眼來做結束
-                """,
+        system_message=system_message_v1,
+        model_client=get_ai_client(),
+        tools=tools,
+        model_client_stream=True,
+    )
+    agent2 = AssistantAgent(
+        "local_pm",
+        system_message="""
+        你的職責是驗證 local_assistant 行為是否有符合使用者的需求，
+        會確定ai_history_{YYYYMMDDHHmm}.log 有被正確產生
+        若不符合則退回重做
+        """,
         model_client=get_ai_client(),
         tools=tools,
         model_client_stream=True,
     )
     termination = TextMentionTermination("END")
     team = RoundRobinGroupChat(
-        [agent],
+        [agent, agent2],
         termination_condition=termination,
     )
     await Console(
@@ -145,7 +162,8 @@ async def programmer_agent() -> None:
             2、新建一個 release/demo的分支
             3、在新的分支上新建一個簡單的demo.json範例，內容隨意
             4、然後發布pull request 回 main
-            5、給我 pull request 位置
+            5、給我分支的位置，顯示json檔案內容
+            
             """
         )
     )
