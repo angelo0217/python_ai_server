@@ -3,11 +3,14 @@ import os
 import autogen
 
 X_API_KEY = os.getenv("X_API_KEY")
-llm_config = {"config_list": {
+llm_config = {
+    "config_list": {
         "model": "grok-3-beta",
         "api_key": X_API_KEY,
-        "base_url": "https://api.x.ai/v1"
-    }, "cache_seed": 42}  # cache_seed 用於可重複性
+        "base_url": "https://api.x.ai/v1",
+    },
+    "cache_seed": 42,
+}  # cache_seed 用於可重複性
 
 # 1. 定義代理
 agent_a_system_message = """你是團隊的協調者 (Coordinator)。
