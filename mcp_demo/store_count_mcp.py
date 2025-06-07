@@ -1,6 +1,10 @@
 import json
+import logging
 
 from mcp.server.fastmcp import FastMCP
+
+logger = logging.getLogger(__name__)
+
 
 # In-memory mock store data
 default_store = {
