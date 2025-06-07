@@ -28,7 +28,7 @@ def get_xai_client() -> OpenAIChatCompletionClient:  # type: ignore
 
 STORE_MCP_PARAMS = StdioServerParams(
     command="python",
-    args=["sotre_count_mcp.py"],  # Fixed typo in filename
+    args=["store_count_mcp.py"],  # Fixed typo in filename
     read_timeout_seconds=10,
 )
 

@@ -26,7 +26,17 @@ DB_PATH = "../database.sqlite"  # 資料庫路徑
 async def execute_query(
     query: str, params: Optional[Union[List, Dict]] = None
 ) -> List[Dict[str, Any]]:
-    """執行 SQL 查詢並返回結果。"""
+    """
+    Executes an SQL query and returns the results.
+    Supports SELECT, PRAGMA, INSERT, UPDATE, DELETE, and other DDL/DML statements.
+
+    :param query: The SQL query string to execute.
+    :param params: Optional parameters for the SQL query (e.g., for prepared statements).
+                   Can be a list for positional parameters or a dictionary for named parameters.
+    :return: A list of dictionaries, where each dictionary represents a row.
+             For DML operations (INSERT, UPDATE, DELETE), returns info like affected_rows and last_row_id.
+             Returns a dictionary with an 'error' key if an exception occurs.
+    """
     try:
         async with aiosqlite.connect(DB_PATH) as db:
             db.row_factory = aiosqlite.Row
@@ -48,7 +58,11 @@ async def execute_query(
 
 
 def init_database() -> None:
-    """初始化資料庫，如果資料表不存在則創建。"""
+    """
+    Initializes the SQLite database.
+    Creates the 'users' table if it does not exist and inserts some test data.
+    This function should be called once at application startup.
+    """
     if not os.path.exists(DB_PATH):
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
@@ -82,7 +96,13 @@ def init_database() -> None:
 
 
 def format_result(result: List[Dict[str, Any]]) -> str:
-    """格式化查詢結果為可讀字串。"""
+    """
+    Formats the SQL query result into a human-readable string, typically a formatted table.
+    Handles empty results, error messages, and DML operation summaries.
+
+    :param result: A list of dictionaries representing the query's rows or an error/summary dictionary.
+    :return: A string representation of the query result.
+    """
     if not result:
         return "查詢完成，沒有返回資料。"
 
@@ -122,10 +142,15 @@ def format_result(result: List[Dict[str, Any]]) -> str:
 
 @mcp.tool()
 async def execute_sql(query: str) -> str:
-    """執行 SQL 查詢。
+    """
+    Executes a direct SQL query against the database.
+    This tool is versatile for performing various database operations like SELECT, INSERT, UPDATE, DELETE, and DDL.
+    The result will be formatted as a human-readable string, including table data for SELECTs or
+    affected row counts for DML operations.
 
-    Args:
-        query: SQL 查詢語句。
+    :param query: The full SQL query string to be executed (e.g., "SELECT * FROM users WHERE age > 30;").
+    :return: A formatted string containing the query results, or an error message if the query fails.
+    :raises RpcError: If a database error or unexpected error occurs during query execution.
     """
     result = await execute_query(query)
     return format_result(result)
@@ -133,10 +158,13 @@ async def execute_sql(query: str) -> str:
 
 @mcp.tool()
 async def get_table_structure(table_name: str) -> str:
-    """取得指定資料表的結構。
+    """
+    Retrieves the structure (schema) of a specified table, including column names, types, and constraints.
+    This is useful for understanding the columns available in a table.
 
-    Args:
-        table_name: 資料表名稱。
+    :param table_name: The name of the database table (e.g., "users").
+    :return: A formatted string representing the table's schema in a tabular format, or an error if the table is not found.
+    :raises RpcError: If a database error occurs (e.g., table not found).
     """
     query = f"PRAGMA table_info({table_name})"
     result = await execute_query(query)
@@ -145,7 +173,13 @@ async def get_table_structure(table_name: str) -> str:
 
 @mcp.tool()
 async def list_tables() -> str:
-    """列出資料庫中的所有資料表。"""
+    """
+    Lists all tables present in the current database.
+    This tool is helpful for discovering available tables before performing operations on them.
+
+    :return: A formatted string listing all table names in a tabular format.
+    :raises RpcError: If a database error occurs.
+    """
     query = "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
     result = await execute_query(query)
     return format_result(result)
@@ -153,11 +187,17 @@ async def list_tables() -> str:
 
 @mcp.tool()
 async def insert_data(table_name: str, data_json: str) -> str:
-    """插入資料到指定的資料表。
+    """
+    Inserts a new record into the specified table.
+    The data to be inserted must be provided as a JSON string.
 
-    Args:
-        table_name: 資料表名稱。
-        data_json: 要插入的資料，格式為 JSON 字串。例如：{"name": "張三", "email": "zhang@example.com", "age": 30}
+    :param table_name: The name of the table to insert data into (e.g., "users").
+    :param data_json: A JSON string representing the data to insert.
+                      Example: '{"name": "Alice", "email": "alice@example.com", "age": 28}'.
+                      Keys must match column names in the table.
+    :return: A formatted string indicating the success of the insertion, including affected rows and last inserted ID,
+             or an error message if the JSON is invalid or insertion fails.
+    :raises RpcError: If a database error occurs or JSON is malformed.
     """
     try:
         data = json.loads(data_json)
@@ -176,12 +216,19 @@ async def insert_data(table_name: str, data_json: str) -> str:
 
 @mcp.tool()
 async def update_data(table_name: str, data_json: str, condition: str) -> str:
-    """更新指定資料表中的資料。
+    """
+    Updates existing records in the specified table that match a given condition.
+    The data to be updated must be provided as a JSON string.
 
-    Args:
-        table_name: 資料表名稱。
-        data_json: 要更新的資料，格式為 JSON 字串。例如：{"name": "新名字", "age": 31}
-        condition: 更新條件（WHERE 子句），例如："id = 1"
+    :param table_name: The name of the table to update (e.g., "users").
+    :param data_json: A JSON string representing the column-value pairs to update.
+                      Example: '{"name": "New Name", "age": 31}'.
+                      Keys must match column names.
+    :param condition: The SQL WHERE clause string (e.g., "id = 1", "age < 30 AND name = 'Bob'").
+                      Do NOT include the "WHERE" keyword itself.
+    :return: A formatted string indicating the success of the update, including affected rows,
+             or an error message if the JSON is invalid or update fails.
+    :raises RpcError: If a database error occurs or JSON is malformed.
     """
     try:
         data = json.loads(data_json)
@@ -199,11 +246,17 @@ async def update_data(table_name: str, data_json: str, condition: str) -> str:
 
 @mcp.tool()
 async def delete_data(table_name: str, condition: str) -> str:
-    """從指定資料表中刪除資料。
+    """
+    Deletes records from the specified table that match a given condition.
+    Use with extreme caution when providing an empty condition, as it will delete all data.
 
-    Args:
-        table_name: 資料表名稱。
-        condition: 刪除條件（WHERE 子句），例如："id = 1"。留空刪除所有資料（小心使用！）
+    :param table_name: The name of the table to delete from (e.g., "users").
+    :param condition: The SQL WHERE clause string (e.g., "id = 1", "age < 20").
+                      Do NOT include the "WHERE" keyword itself.
+                      If an empty string is provided, ALL data in the table will be deleted.
+    :return: A formatted string indicating the success of the deletion, including affected rows,
+             or an error message if deletion fails.
+    :raises RpcError: If a database error occurs.
     """
     query = f"DELETE FROM {table_name}"
     if condition.strip():
@@ -215,10 +268,14 @@ async def delete_data(table_name: str, condition: str) -> str:
 
 @mcp.resource("tables://{table_name}/schema")
 async def table_schema(table_name: str) -> JSONResponse:
-    """取得指定資料表的 schema 並以 JSON 格式返回。
+    """
+    Retrieves the schema (column information) of a specified database table as a JSON array.
+    This resource is designed for programmatic access to table structure.
 
-    Path Parameter:
-        table_name: 要查詢 schema 的資料表名稱。
+    :param table_name: The name of the table whose schema is to be retrieved.
+    :return: A Starlette JSONResponse containing a list of dictionaries, where each dictionary
+             describes a column (e.g., {"cid": 0, "name": "id", "type": "INTEGER", ...}).
+             Returns an error JSON if the table is not found or a database error occurs.
     """
     query = f"PRAGMA table_info({table_name})"
     result = await execute_query(query)
@@ -233,7 +290,12 @@ def get_greeting(name: str) -> str:
 
 @mcp.prompt()
 def table_structure_prompt(operation: str) -> str:
-    """Prompt for a calculation and return the result."""
+    """
+    Provides a personalized greeting message from the SQL operator service.
+
+    :param name: The name of the person to greet.
+    :return: A personalized greeting string.
+    """
     if operation == "get_table_structure":
         return f"you can get table structure <UNK>"
     else:
@@ -241,7 +303,13 @@ def table_structure_prompt(operation: str) -> str:
 
 
 def create_starlette_app(mcp_server: Server, *, debug: bool = False) -> Starlette:
-    """建立一個 Starlette 應用程式，用於提供 MCP 伺服器的 SSE 介面和資料表 schema 資源。"""
+    """
+    Generates a prompt string based on the requested operation.
+    This prompt can guide an LLM on how to interact with specific tools.
+
+    :param operation: The name of the operation or tool (e.g., "get_table_structure").
+    :return: A descriptive string related to the operation, or an "Invalid operation" message.
+    """
     sse = SseServerTransport("/messages/")
 
     async def handle_sse(request: Request) -> None:

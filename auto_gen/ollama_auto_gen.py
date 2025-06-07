@@ -15,7 +15,7 @@ console = Console()
 
 def get_model_client_ollama() -> OpenAIChatCompletionClient:  # type: ignore
     return OpenAIChatCompletionClient(
-        model="deepseek-r1:latest",
+        model="qwen3:32b",
         api_key="ollama",
         base_url="http://localhost:11434/v1",
         model_capabilities={

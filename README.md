@@ -23,7 +23,7 @@
 
 4.  **使用 uv 執行 mcp 安裝 sotre_count_mcp.py：**
     ```bash
-    uv run mcp install sotre_count_mcp.py
+    uv run mcp install store_count_mcp.py
     ```
     這會自動安裝到有 mcp 設定的地方。
 
