@@ -20,7 +20,7 @@ from starlette.middleware.cors import CORSMiddleware
 mcp = FastMCP("sql_operator")
 
 # 常數
-DB_PATH = "database.sqlite"  # 資料庫路徑
+DB_PATH = "../database.sqlite"  # 資料庫路徑
 
 
 async def execute_query(
