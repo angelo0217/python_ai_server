@@ -1,66 +1,105 @@
 import os
 from langchain_community.document_loaders import TextLoader
 from langchain_text_splitters import CharacterTextSplitter
-
-# from langchain_openai import OpenAIEmbeddings # 不再需要導入 OpenAIEmbeddings
-from langchain_community.embeddings import OllamaEmbeddings  # 導入 OllamaEmbeddings
-from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
-from langchain_community.llms import Ollama
-from langchain_community.chat_models import ChatOllama
+from langchain_community.embeddings import OllamaEmbeddings
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_community.vectorstores import Redis as RedisVectorStore
 from langchain.chains import RetrievalQA
 
-# 移除 OpenAI API Key 的設定，因為我們不再使用 OpenAI 的服務
-# os.environ["OPENAI_API_KEY"] = "YOUR_OPENAI_API_KEY"
-
-# 設置 Redis 連接資訊
+# Set Redis connection information
 REDIS_URL = "redis://127.0.0.1:6379"
 INDEX_NAME = "my_rag_index"
 
 if not os.getenv("GOOGLE_API_KEY"):
     raise ValueError(
-        "GOOGLE_API_KEY 環境變數未設置。請在 .env 檔案中或直接在程式碼中設定您的 API Key。"
+        "GOOGLE_API_KEY environment variable not set. Please set your API Key in a .env file or directly in the code."
     )
 
 
-# 1. 載入資料 (假設你有一份 story.txt 文件)
-loader = TextLoader("langchain_demo/story.txt", encoding="utf-8")
-documents = loader.load()
+def train_vector_database(file_path: str, redis_url: str, index_name: str):
+    """
+    Loads documents, splits them, generates embeddings using Ollama,
+    and stores them in a Redis vector database.
 
-# 2. 切割文本
-text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-docs = text_splitter.split_documents(documents)
+    Args:
+        file_path (str): The path to the document file (e.g., "langchain_demo/story.txt").
+        redis_url (str): The URL for the Redis instance.
+        index_name (str): The name for the Redis index.
+    """
+    print(f"Starting vector database training for file: {file_path}")
 
-# --- 關鍵修改點：將嵌入模型切換到 Ollama ---
-# 3. 生成嵌入並儲存到 Redis 向量資料庫
-embeddings = OllamaEmbeddings(model="nomic-embed-text")  # 使用 Ollama 的 nomic-embed-text 模型
+    # 1. Load data
+    loader = TextLoader(file_path, encoding="utf-8")
+    documents = loader.load()
 
-vectorstore = RedisVectorStore.from_documents(
-    docs, embeddings, redis_url=REDIS_URL, index_name=INDEX_NAME
-)
-print(f"Documents loaded and indexed into Redis index: {INDEX_NAME}")
+    # 2. Split text
+    text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+    docs = text_splitter.split_documents(documents)
+    print(f"Split {len(docs)} documents into chunks.")
 
-
-# 4. 創建檢索器
-retriever = vectorstore.as_retriever()
-
-# 5. 初始化 LLM - 使用 Ollama
-# llm = ChatOllama(model="qwen3:32b", temperature=0) # 確保你的 Ollama 有運行 llama3 模型
-
-GEMINI_CHAT_MODEL = "gemini-2.5-flash-preview-04-17"
-llm = ChatGoogleGenerativeAI(model=GEMINI_CHAT_MODEL, temperature=0)
-print(f"使用 Gemini LLM ({GEMINI_CHAT_MODEL}) 初始化。")
+    # 3. Generate embeddings and store in Redis vector database
+    embeddings = OllamaEmbeddings(model="nomic-embed-text")
+    vectorstore = RedisVectorStore.from_documents(
+        docs, embeddings, redis_url=redis_url, index_name=index_name
+    )
+    print(f"Documents loaded and indexed into Redis index: {index_name}")
 
 
-# 6. 創建 RAG Chain
-qa_chain = RetrievalQA.from_chain_type(
-    llm=llm, chain_type="stuff", retriever=retriever, return_source_documents=True
-)
+def ask_question_with_rag(query: str, redis_url: str, index_name: str):
+    """
+    Answers a question using a RAG (Retrieval-Augmented Generation) chain.
 
-# 7. 測試查詢
-query = "提到冰冷的建築段落主要在說什麼"
-result = qa_chain.invoke({"query": query})
-print(result["result"])
-print("\n--- 參考來源 ---")
-for doc in result["source_documents"]:
-    print(doc.metadata)
+    Args:
+        query (str): The question to ask.
+        redis_url (str): The URL for the Redis instance.
+        index_name (str): The name of the Redis index to retrieve from.
+
+    Returns:
+        dict: A dictionary containing the answer and source documents.
+    """
+    print(f"\nProcessing query: '{query}'")
+
+    # Initialize Ollama Embeddings for retrieval (needs to match the one used for training)
+    embeddings = OllamaEmbeddings(model="nomic-embed-text")
+
+    # Connect to the existing Redis vector store
+    vectorstore = RedisVectorStore(embedding=embeddings, redis_url=redis_url, index_name=index_name)
+    print("Connected to Redis vector store.")
+
+    # 4. Create retriever
+    retriever = vectorstore.as_retriever()
+
+    # 5. Initialize LLM - Using Gemini
+    GEMINI_CHAT_MODEL = "gemini-2.5-flash-preview-04-17"
+    llm = ChatGoogleGenerativeAI(model=GEMINI_CHAT_MODEL, temperature=0)
+    print(f"Initialized Gemini LLM ({GEMINI_CHAT_MODEL}).")
+
+    # 6. Create RAG Chain
+    qa_chain = RetrievalQA.from_chain_type(
+        llm=llm, chain_type="stuff", retriever=retriever, return_source_documents=True
+    )
+
+    # 7. Test query
+    result = qa_chain.invoke({"query": query})
+    return result
+
+
+# --- Example Usage ---
+if __name__ == "__main__":
+    # Train the vector database
+    try:
+        train_vector_database("langchain_demo/story.txt", REDIS_URL, INDEX_NAME)
+    except Exception as e:
+        print(f"Error during vector database training: {e}")
+
+    # Ask a question based on the vector database
+    try:
+        query = "提到冰冷的建築段落主要在說什麼"
+        response = ask_question_with_rag(query, REDIS_URL, INDEX_NAME)
+        print("\n--- Answer ---")
+        print(response["result"])
+        print("\n--- Source Documents ---")
+        for doc in response["source_documents"]:
+            print(doc.metadata)
+    except Exception as e:
+        print(f"Error during RAG query: {e}")
