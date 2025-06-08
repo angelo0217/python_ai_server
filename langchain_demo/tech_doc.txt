@@ -1,0 +1,1 @@
+Dean 專案是一個在嘗試學習ai應用的專案，裏面包含了 auto gen, langchain的一些使用範例

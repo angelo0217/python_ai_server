@@ -206,11 +206,6 @@ if __name__ == "__main__":
     # Example:
     # echo "There once was a lonely house on a cold, unforgiving hill." > langchain_demo/story.txt
     # echo "Kubernetes is an open-source container orchestration system." > langchain_demo/tech_doc.txt
-    os.makedirs("langchain_demo", exist_ok=True)
-    with open("langchain_demo/tech_doc.txt", "w", encoding="utf-8") as f:
-        f.write(
-            "Kubernetes 是一個開源的容器編排系統，用於自動化應用程式的部署、擴展和管理。它最初由 Google 設計。"
-        )
 
     # --- 1. Train Vector Databases ---
     print("\n--- Training Vector Databases ---")
@@ -236,7 +231,7 @@ if __name__ == "__main__":
 
     # Query the tech document index
     print("\n--- Querying Tech Document Index ---")
-    query_tech = "Kubernetes 是什麼？"
+    query_tech = "Dean 專案 是什麼？"
     response_tech = rag_service.query(query_tech, TECH_DOC_INDEX_NAME)
     print("Answer:", response_tech["result"])
     print(
@@ -246,7 +241,7 @@ if __name__ == "__main__":
 
     # Example of a multi-index query
     print("\n--- Performing Multi-Index Query ---")
-    multi_query = "請問冰冷的建築和 Kubernetes 分別是什麼？"
+    multi_query = "請問冰冷的建築和 Dean 專案 分別是什麼？"
     response_multi = rag_service.multi_index_query(
         multi_query, [STORY_INDEX_NAME, TECH_DOC_INDEX_NAME]
     )
