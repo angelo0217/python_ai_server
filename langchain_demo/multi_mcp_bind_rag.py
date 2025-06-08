@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash-preview-04-17", temperature=0)
 
 redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
-index_name = os.getenv("REDIS_INDEX_NAME", "my_rag_index")
+index_name = os.getenv("REDIS_INDEX_NAME", "story_rag_index")
 
 embeddings = OllamaEmbeddings(model="nomic-embed-text")
 
