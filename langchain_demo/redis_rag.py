@@ -1,3 +1,4 @@
+import asyncio
 import os
 import redis
 from langchain.chains import RetrievalQA
@@ -5,6 +6,7 @@ from langchain_community.chat_models import ChatOllama
 from langchain_community.document_loaders import TextLoader
 from langchain_community.embeddings import OllamaEmbeddings
 from langchain_community.vectorstores import Redis as RedisVectorStore
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_text_splitters import CharacterTextSplitter, RecursiveCharacterTextSplitter
 
 # from langchain.tools import Tool # This import was in your original code but not used in the final version of rag_query_tool
@@ -69,6 +71,7 @@ class RAGService:
         self.embedding_model = embedding_model
         self.embeddings = OllamaEmbeddings(model=self.embedding_model)
         self.llm = ChatOllama(model=self.llm_model, temperature=0)
+        # self.llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash-preview-04-17", temperature=0)
         self.vectorstores = {}  # To store active vector store connections
 
     def train_vector_database(self, file_path: str, index_name: str):
@@ -198,7 +201,9 @@ class RAGService:
 
 
 # --- Example Usage (similar to API calls) ---
-if __name__ == "__main__":
+
+
+def demo_multi_query():
     rag_service = RAGService(redis_url=REDIS_URL)
 
     # Assume 'langchain_demo/story.txt' and 'langchain_demo/tech_doc.txt' exist.
@@ -221,7 +226,7 @@ if __name__ == "__main__":
 
     # Query the story index
     print("\n--- Querying Story Index ---")
-    query_story = "提到冰冷的建築段落主要在說什麼"
+    query_story = "提到 城市 段落主要在說什麼"
     response_story = rag_service.query(query_story, STORY_INDEX_NAME)
     print("Answer:", response_story["result"])
     print(
@@ -250,3 +255,30 @@ if __name__ == "__main__":
         "Source Documents:",
         [doc.metadata.get("source", "Unknown") for doc in response_multi["source_documents"]],
     )
+
+
+async def ask_q():
+    rag_service = RAGService(redis_url=REDIS_URL)
+    vectorstore = RedisVectorStore(
+        embedding=rag_service.embeddings, redis_url=REDIS_URL, index_name=STORY_INDEX_NAME
+    )
+    retriever = vectorstore.as_retriever()
+    qa_chain = RetrievalQA.from_chain_type(
+        llm=rag_service.llm,
+        chain_type="stuff",
+        retriever=retriever,
+        return_source_documents=True,
+        # chain_type_kwargs={"prompt": custom_prompt_template}
+    )
+    response = qa_chain.invoke({"query": "提到 夜幕 的段落有哪些"})
+    print("\n🤖 回答:", response)
+    print("-" * 50)
+    print(response["result"])  # RetrievalQA 返回一個字典，回答在 'result' 鍵中
+    if "source_documents" in response:
+        print("\n📚 參考資料:")
+        for doc in response["source_documents"]:
+            print("metadata_id:", doc.metadata["id"])
+
+
+if __name__ == "__main__":
+    asyncio.run(ask_q())

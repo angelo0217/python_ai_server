@@ -309,7 +309,7 @@ async def main(task):
 if __name__ == "__main__":
     asyncio.run(
         main(
-        """
+            """
            1、TORE1 有哪些人
            2、查詢db，張三的email是什麼?
            3、提到冰冷的建築段落主要在說什麼
