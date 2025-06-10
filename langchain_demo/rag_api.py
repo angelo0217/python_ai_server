@@ -72,4 +72,4 @@ async def multi_query_endpoint(request: MultiQueryRequest):
 
 
 # To run this FastAPI app:
-# uvicorn your_module_name:app --reload
+# uvicorn langchain_demo.rag_api:app --reload
