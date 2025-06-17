@@ -1,5 +1,5 @@
 [project]
-name = "python-mcp-server"
+name = "python-ai-learn"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -29,4 +29,13 @@ dependencies = [
     "requests-html>=0.10.0",
     "rich>=14.0.0",
     "uvicorn>=0.34.2",
+]
+
+[tool.setuptools]
+packages = [
+    "auto_gen",
+    "mcp_demo",
+    "gen_code_xai",
+    "langchain_demo",
+    "gen_code_gemini"
 ]

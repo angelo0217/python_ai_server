@@ -31,3 +31,8 @@
     ```
     npx @modelcontextprotocol/inspector
     ```
+
+6. ** 專案初始 **
+    ```
+    uv pip install -e .
+   ```
