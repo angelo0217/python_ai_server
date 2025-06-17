@@ -35,4 +35,8 @@
 6. ** 專案初始 **
     ```
     uv pip install -e .
+   
+   通常，在一個專案的工作流程中，您會先使用 
+   uv pip compile pyproject.toml -o uv.lock 來生成或更新 uv.lock 檔案，
+   然後再使用 uv pip sync（基於 uv.lock）或 uv pip install -e . 來安裝專案及其依賴。
    ```
